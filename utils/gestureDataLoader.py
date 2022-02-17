@@ -6,7 +6,32 @@ import scipy.io as sio
 import numpy as np
 from tensorflow.keras.utils import to_categorical
 from sklearn.model_selection import train_test_split
+from scipy import stats
 import time
+class preprocessing:
+    def __init__( self ):
+        pass
+    def norm( self, data ):
+        # interval_min = -1
+        # interval_max = 1
+        # data = (data - np.min( data )) / (np.max( data ) - np.min( data )) * (
+        #         interval_max - interval_min) + interval_min
+        shape_of_data = data.shape
+        data = data.reshape(-1)
+        data = (data - np.mean( data))/np.std(data)
+        data = data.reshape(shape_of_data)
+        # data = stats.zscore(data, axis=1)
+        return data
+    def scale( self, data,D_range):
+        # buf = []
+        n = data.shape[0]
+        re_data = data.reshape(n,-1)
+        scale_data = (re_data - np.min(re_data,axis=1,keepdims = True)) / ( np.max(re_data,axis=1,keepdims = True) -
+                                                                           np.min(re_data,axis=1,keepdims = True) )
+        scale_data = scale_data.reshape(data.shape)
+        # for i in range(len(data)):
+        #     buf.append((data[i] - np.min(data[i]))/(np.max(data[i]) - np.min(data[i])))
+        return scale_data * D_range
 class signDataLoader:
     ''':returns
         filename: [0] home-276 -> user 5, 2760 samples,csid_home and csiu_home
@@ -106,7 +131,6 @@ class widarDataLoader:
         end = time.time( )
         print(f'Time cost: {end-start:.2f}')
         return X_train, X_test, y_train, y_test
-
 class BVPDataLoader:
     def __init__(self,config):
         self.T_MAX = 0
@@ -184,7 +208,8 @@ class BVPDataLoader:
                 )
         # data(ndarray): [N,T_MAX,20,20,1], label(ndarray): [N,N_MOTION]
         return [data_train, data_test, label_train, label_test]
-def getData(config, dataset_name:str):
+def getData(config, dataset_name:str,ifzscore:bool=False,ifscale:bool=False):
+    procObj = preprocessing()
     if dataset_name == 'widar':
         config.data_dir = [ 'E:\\SensingDataset\\Widar\\20181109\\User1',
                             'E:\\SensingDataset\\Widar\\20181115\\User1' ]
@@ -208,13 +233,24 @@ def getData(config, dataset_name:str):
         config.source = 'lab_276'
         signFiLoader = signDataLoader( config=config )
         X_train, X_test, y_train, y_test = signFiLoader.loadData( )
-        config.pretrained_model_path = dataset_name + '_model_' + f'{config.source}'
+        config.pretrained_model_path = 'SavedModel\\' + dataset_name + '_model_' + f'{config.source}'+f'_scale' \
+                                                                                                   f'_' \
+                                                                                                      f'' \
+                                                                                                      f'' \
+                                                                                                      f'' \
+                                                                                                      f'{config.D_range}' +'.h5'
     elif dataset_name == 'BVP':
         '''test BVP loader'''
         config.data_dir = 'E:\SensingDataset\BVP_attack'
         BVP_Obj = BVPDataLoader( config )
         X_train, X_test, y_train, y_test = BVP_Obj.loadData( )
-    return [X_train, X_test, y_train, y_test]
+    if ifzscore:
+        return [procObj.norm(X_train), procObj.norm(X_test), y_train, y_test]
+    elif ifscale:
+        return [procObj.scale(X_train,D_range = config.D_range), procObj.scale(X_test,D_range = config.D_range), y_train,
+                y_test]
+    else:
+        return [ X_train ,  X_test , y_train, y_test ]
 if __name__ == '__main__':
     import sys,os
     current_dir = os.getcwd( )
@@ -223,11 +259,11 @@ if __name__ == '__main__':
     import Config
     config = Config.getconfig()
     '''test widar loader'''
-    # config.data_dir = ['E:\\SensingDataset\\Widar\\20181109\\User1',
-    #                    'E:\\SensingDataset\\Widar\\20181115\\User1' ]
-    # load_widar_obj =widarDataLoader(config)
-    # X_train, X_test, y_train, y_test = load_widar_obj.loadData(motion_sel = [1,2,3,4,5,6],l = [2], o = [2],r = ['r1','r2','r3','r4','r5','r6'])
+    config.data_dir = ['E:\\SensingDataset\\Widar\\20181109\\User1',
+                       'E:\\SensingDataset\\Widar\\20181115\\User1' ]
+    load_widar_obj =widarDataLoader(config)
+    X_train, X_test, y_train, y_test = load_widar_obj.loadData(motion_sel = [1,2,3,4,5,6],)
     '''test BVP loader'''
-    config.data_dir = 'E:\SensingDataset\BVP_attack'
-    BVP_Obj = BVPDataLoader(config)
-    data_train, data_test, label_train, label_test = BVP_Obj.loadData()
+    # config.data_dir = 'E:\SensingDataset\BVP_attack'
+    # BVP_Obj = BVPDataLoader(config)
+    # data_train, data_test, label_train, label_test = BVP_Obj.loadData()

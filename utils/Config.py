@@ -16,6 +16,7 @@ class getconfig:
         self.pretrained_model_path = None
         self.test_data = None
         self.test_label = None
+        self.D_range = None
 
         # if if_Restore_Samp_idx:
         #     self.getSampleIdx()

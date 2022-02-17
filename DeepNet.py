@@ -16,10 +16,9 @@ import torch.nn.functional as F
 import numpy as np
 import sys
 import os
-
 current_dir = os.getcwd( )
 sys.path.append( current_dir )
-sys.path.append( current_dir + '/utils' )
+sys.path.append( current_dir + '\\utils' )
 sys.path.append( 'G:\\我的云端硬盘\\Colab Notebooks\\SensingDataset\\SignFi\\Dataset' )
 import Config, SignalPreprocess, gestureDataLoader, DeepNet, plotSig
 gpus = tf.config.experimental.list_physical_devices( 'GPU' )
@@ -57,6 +56,11 @@ if gpus:
 #         # x = F.relu( self.fc2( x ) )
 #         # x = self.fc3( x )
 #         return x
+class myCallback(tf.keras.callbacks.Callback):
+	def on_epoch_end(self, epoch, logs={}):
+		if(logs.get('val_acc') > 0.95):
+			print("\nReached %2.2f%% accuracy, so stopping training!!" %(0.95*100))
+			self.model.stop_training = True
 class AlexNetTF:
     def __init__( self,config=None ):
         self.config = config
@@ -98,14 +102,37 @@ class AlexNetTF:
         output = Softmax( )( fc )
         Net = Model( inputs=input, outputs=output )
         return Net
+def generatePerturbData(psr,data,current_label,pretrained_model,t_label):
+    perturbation = create_adversarial_pattern( data, current_label, pretrained_model, t_label = t_label )
+    perturbation = np.squeeze(perturbation)
+    data = np.squeeze(data)
+    p_perturbation = np.mean( perturbation ** 2, axis = 0 )
+    p_data = np.mean( np.squeeze(data) ** 2, axis = 0 ) + 0.00000000001
 
+    if np.mean(p_perturbation/p_data) != 0:
+        eps = np.sqrt( psr * (1 / np.mean( p_perturbation / p_data )) )
+        adv_data = data + eps * perturbation
+        return np.expand_dims(adv_data,axis=0)
+        # print(f'eps is {psr * np.sqrt((1/np.mean(p_perturbation/p_data)))}')
+    else:
+        flag = 'Zero'
+        return flag
+
+    # print(f'The input PSR is {psr}')
 def load_tf_model(path:str = "/content/drive/MyDrive/Colab Notebooks/AdversarialAttack/signFi_model"):
   return tf.keras.models.load_model(path)
 def create_adversarial_pattern(input_CSI, label, pretrained_model, t_label: int = None):
+    '''
+    Create adversarial pattern for single input
+    The input shape should be:
+    (1,shape of data) -> (1,200,60,3)
+    (1, shape of label) -> (1,276)
+    '''
     loss_object = tf.keras.losses.CategoricalCrossentropy( )
     input_CSI = tf.convert_to_tensor(input_CSI, dtype=tf.float32)
     label = tf.convert_to_tensor(label, dtype=tf.float32)
     if t_label:
+        # if label == t_label:
         t_label = tf.convert_to_tensor(np.expand_dims(to_categorical( t_label-1, num_classes = 6 ),axis=0),
                 dtype=tf.float32)
         with tf.GradientTape() as tape:
@@ -123,28 +150,31 @@ def create_adversarial_pattern(input_CSI, label, pretrained_model, t_label: int 
     signed_grad = tf.sign(gradient)
     return signed_grad
 def runTrain(config, dataset_name):
+    m_callback = myCallback()
     # name = 'widar'
-    X_train, X_test, y_train, y_test = gestureDataLoader.getData(config, dataset_name)
+    X_train, X_test, y_train, y_test = gestureDataLoader.getData(config, dataset_name,ifzscore = False,ifscale=True)
+    print(f'The training data range from {X_train.min()} to {X_train.max()}')
     net = AlexNetTF( config )
     Net = net.buildModel( )
     lrScheduler = ReduceLROnPlateau(
             monitor='val_loss', factor=0.1,
             patience=20,
     )
-    earlyStop = tf.keras.callbacks.EarlyStopping( monitor='val_acc', patience=50, restore_best_weights=True )
+    earlyStop = tf.keras.callbacks.EarlyStopping( monitor='val_acc', patience=15, restore_best_weights=True )
 
     optimizer = tf.keras.optimizers.Adamax(
             learning_rate=config.lr, beta_1=0.95, beta_2=0.99, epsilon=1e-09,
             name='Adamax'
     )
     Net.compile( loss='categorical_crossentropy', optimizer=optimizer, metrics='acc' )
-    Net.summary( )
+    # Net.summary( )
     history = Net.fit(
             X_train, y_train,
             validation_split=0.05,
             batch_size = config.batch_size,
             epochs=1000,
-            callbacks=[ earlyStop, lrScheduler ]
+            callbacks=[ m_callback, lrScheduler ],
+            verbose = 1
     )
     Net.evaluate(X_test, y_test)
     config.test_data = X_test
@@ -156,10 +186,60 @@ def runTest(input_CSI,labels,pretrained_model):
     Correct_count = np.sum(pre_label == true_label)
     accuracy = Correct_count/labels.shape[0]
     print(f'The accuracy is {accuracy}')
-def runAdvExsTest(input_CSI,labels,pretrained_model,eps,ifpltcmd:bool =False,t_label:int=None):
+def runAdvExsTestPSR(input_CSI,labels,pretrained_model,psr,ifpltcmd:bool =False,t_label:int=None):
     '''
     labels: should be one hot coded
     '''
+    method = 'eval'
+    if method == 'pred':
+        print( f'Testing the accuracy of adversarial sampels for PSR = {psr}, using predition method' )
+        label_adv_pred_container = []
+        for i,data in enumerate(input_CSI):
+            data,current_label = np.expand_dims(data,axis=0),np.expand_dims(labels[i],axis=0)
+            ori_pred_label = np.argmax(pretrained_model.predict(data),axis = 1)
+            if ori_pred_label == np.argmax( current_label, axis=1 ):
+                advData = generatePerturbData(
+                        psr = psr, data = data, current_label = current_label, pretrained_model =
+                        pretrained_model, t_label = t_label
+                        )
+                if advData is str:
+                    print('see a string')
+                    continue
+                # advData = data + eps*create_adversarial_pattern(data,current_label,pretrained_model,t_label = t_label)
+                label_adv_pred_container.append( np.argmax( pretrained_model.predict( advData ), axis = 1 ) )
+            else:
+                label_adv_pred_container.append(ori_pred_label)
+        true_label = np.argmax( labels, axis = 1 )
+        label_adv_pred_container = np.squeeze(np.asarray( label_adv_pred_container ))
+        accuracy = np.sum( label_adv_pred_container == true_label ) / labels.shape[0 ]
+    elif method == 'eval':
+        print( f'Testing the accuracy of adversarial sampels for PSR = {psr}, using evaluation method' )
+        advData = [ ]
+        for i, test_data in enumerate( input_CSI ):
+            test_data, current_label = np.expand_dims( test_data, axis = 0 ), np.expand_dims(
+                    labels[ i ], axis = 0
+                    )
+            advData.append(
+                    generatePerturbData(
+                            psr = psr, data = test_data, current_label = current_label, pretrained_model =
+                            pretrained_model, t_label = t_label
+                            )
+                    )
+        advData = np.concatenate( advData, axis = 0 )
+        loss, accuracy = pretrained_model.evaluate( advData, config.test_label, verbose = 0 )
+    if ifpltcmd:
+        label_pred = np.argmax(pretrained_model.predict( advData ),axis=1)
+        label_true = np.argmax(labels,axis=1)
+        title = f'PSR: {psr}, Accuracy: {accuracy:.2f}, target: {t_label}'
+        plotSig.pltcm( label_test_pred = label_pred, true_label = label_true, title = title )
+    print(f'The accuracy of adversarial samples for PSR = {psr} is {accuracy:.2f}')
+    return accuracy
+
+def runAdvExsTestEps(input_CSI,labels,pretrained_model,eps,ifpltcmd:bool =False,t_label:int=None):
+    '''
+    labels: should be one hot coded
+    '''
+    print(f'The eps is {eps}')
     label_adv_pred_container = []
     for i,data in enumerate(input_CSI):
         data,current_label = np.expand_dims(data,axis=0),np.expand_dims(labels[i],axis=0)
@@ -172,52 +252,70 @@ def runAdvExsTest(input_CSI,labels,pretrained_model,eps,ifpltcmd:bool =False,t_l
     true_label = np.argmax( labels, axis = 1 )
     label_adv_pred_container = np.squeeze(np.asarray( label_adv_pred_container ))
     accuracy = np.sum( label_adv_pred_container == true_label ) / labels.shape[0 ]
-    if ifpltcmd:
-      title = f'eps: {eps}, Accuracy: {accuracy:.2f}, target: {t_label}'
-      plotSig.pltcm( label_test_pred = label_adv_pred_container, true_label = true_label, title = title )
-    print( f'Accuracy for ep = {eps:.3f} is {accuracy:.2f}' )
+    # if ifpltcmd:
+    #   title = f'eps: {eps}, Accuracy: {accuracy:.2f}, target: {t_label}'
+    #   plotSig.pltcm( label_test_pred = label_adv_pred_container, true_label = true_label, title = title )
+    print( f'Accuracy for eps = {eps:.3f} is {accuracy:.2f}' )
     return accuracy
 if __name__ == '__main__':
     current_dir = os.getcwd( )
     sys.path.append( current_dir )
     sys.path.append( current_dir + '/utils' )
     sys.path.append( 'G:\\我的云端硬盘\\Colab Notebooks\\SensingDataset\\SignFi\\Dataset' )
-    import Config, SignalPreprocess, gestureDataLoader, DeepNet, plotSig
+    import Config, SignalPreprocess, gestureDataLoader, DeepNet, plotSig, TOOLS
     config = Config.getconfig( )
     '''Prepare data'''
     # choose dataset
-    dataset_name = 'widar'
-    _, config.test_data, _, config.test_label = gestureDataLoader.getData(config, dataset_name)
-
+    dataset_name = 'signfi'
+    config.D_range = 1
+    _, config.test_data, _, config.test_label = gestureDataLoader.getData(config, dataset_name, ifscale = True)
     '''Run training process'''
-    # runTrain( config = config, dataset_name = 'widar' )
+    # runTrain( config = config, dataset_name = 'signfi' )
     '''Load pretrained model'''
-    config.pretrained_model_path = 'SavedModel/widar_model_loc[2]_ori[2]Rx123456'
     pretrained_model = tf.keras.models.load_model(config.pretrained_model_path )
-    pretrained_model.summary()
     '''Evaluation of adversarial samples'''
-    accuracy_attack_free = pretrained_model.evaluate(config.test_data, config.test_label, verbose=1)
-    acc = runAdvExsTest(
-                        input_CSI = config.test_data,
-                        labels = config.test_label,
-                        pretrained_model = pretrained_model,
-                        eps = 3,
-                        ifpltcmd = True
-                        )
+    # testAdvExsPSR(config.test_data,config.test_label,pretrained_model,psr =0.2)
+    runAdvExsTestPSR( config.test_data, config.test_label, pretrained_model, psr = 0.06 )
+
+    # accuracy_attack_free = pretrained_model.evaluate(config.test_data, config.test_label, verbose=1)
     # all_acc = []
-    # for ep in np.arange( 0, 3, 0.05 ):
+    # all_t_acc = {}
+    # for t in np.arange(1,7,1):
+    #     all_t_acc[f'Targeted{t}'] = []
+    #     for ep in np.arange( 0, 0.2, 0.01 ):
+    #         accuracy = DeepNet.runAdvExsTest(
+    #                             input_CSI = config.test_data,
+    #                             labels = config.test_label,
+    #                             pretrained_model = pretrained_model,
+    #                             eps = ep,
+    #                             t_label = t
+    #                             )
+    #         all_t_acc[ f'Targeted{t}' ].append(accuracy)
+    # from scipy.io import savemat
+    # all_t_acc[ 'eps' ] = []
+    # all_t_acc[ 'eps' ].append(np.arange( 0, 0.2, 0.01 ))
+    # savemat( "utils\\resultsMat\\targeted-acc.mat", all_t_acc )
+    # for ep in np.arange( 0, 0.2, 0.01 ):
     #     accuracy = DeepNet.runAdvExsTest(
     #             input_CSI = config.test_data,
     #             labels = config.test_label,
     #             pretrained_model = pretrained_model,
     #             eps = ep
     #             )
-    #
     #     all_acc.append( accuracy )
+    # for t in [None,1,2,3,4,5,6]:
+    #     DeepNet.runAdvExsTest(
+    #                 input_CSI = config.test_data,
+    #                 labels = config.test_label,
+    #                 pretrained_model = pretrained_model,
+    #                 eps = 0.15,
+    #                 ifpltcmd = True,
+    #                 t_label = t
+    #                 )
     '''visualisation of adversarial samples'''
     # X_test = config.test_data[ 0:1 ]
     # y_test = config.test_label[ 0:1 ]
-    # eps = np.arange( 0.5, 1.5, 0.2 )
+    # eps = np.arange( 0.01, 0.05, 0.01 )
     # range_adv = []
     # for ep in eps:
     #     advData = X_test + ep * create_adversarial_pattern( X_test, y_test, pretrained_model )
@@ -227,8 +325,18 @@ if __name__ == '__main__':
     # import matplotlib.pyplot as plt
     # plt.figure()
     # plt.pcolormesh(config.test_data[0,:,:,1,0])
-    # advData = config.test_data[0:1] + 0.1 * create_adversarial_pattern( config.test_data[0:1], config.test_label[0:1],
-    #         pretrained_model )
+    # advData = config.test_data[0:1] + 0.025 * create_adversarial_pattern( config.test_data[0:1], config.test_label[
+    # 0:1],pretrained_model )
     # plt.figure( )
     # plt.pcolormesh(advData[0,:,:,1,0])
-    # label_test_pred = model.predict( data_test )
+    '''SPR'''
+    # for ep in np.arange( 0, 0.2, 0.01 ):
+    #     PSR = [ ]
+    #     for i in range(len(config.test_data)):
+    #         data = config.test_data[i:i+1]
+    #         label = config.test_label[i:i+1]
+    #         perturbation = ep * create_adversarial_pattern( data, label, pretrained_model )
+    #         # advData = data + perturbation
+    #         PSR.append(TOOLS.PSRCompute(perturbation, data,  ))
+    #     print(f'SPR is {np.mean(PSR)}')
+
