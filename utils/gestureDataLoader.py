@@ -246,13 +246,13 @@ def getData(config, dataset_name:str,ifzscore:bool=False,ifscale:bool=False):
         config.data_dir = 'E:\SensingDataset\BVP_attack'
         BVP_Obj = BVPDataLoader( config )
         X_train, X_test, y_train, y_test = BVP_Obj.loadData( )
-    if ifzscore:
-        return [procObj.norm(X_train), procObj.norm(X_test), y_train, y_test]
-    elif ifscale:
-        return [procObj.scale(X_train,D_range = config.D_range), procObj.scale(X_test,D_range = config.D_range), y_train,
-                y_test]
-    else:
-        return [ X_train ,  X_test , y_train, y_test ]
+    # if ifzscore:
+    #     return [procObj.norm(X_train), procObj.norm(X_test), y_train, y_test]
+    # elif ifscale:
+    #     return [procObj.scale(X_train,D_range = config.D_range), procObj.scale(X_test,D_range = config.D_range), y_train,
+    #             y_test]
+    # else:
+    return [ X_train ,  X_test , y_train, y_test ]
 if __name__ == '__main__':
     import sys,os
     current_dir = os.getcwd( )

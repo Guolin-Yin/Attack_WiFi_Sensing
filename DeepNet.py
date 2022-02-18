@@ -22,6 +22,7 @@ sys.path.append( current_dir + '\\utils' )
 sys.path.append( 'G:\\我的云端硬盘\\Colab Notebooks\\SensingDataset\\SignFi\\Dataset' )
 import Config, SignalPreprocess, gestureDataLoader, DeepNet, plotSig
 from scipy.io import savemat, loadmat
+import matplotlib.pyplot as plt
 gpus = tf.config.experimental.list_physical_devices( 'GPU' )
 
 if gpus:
@@ -111,21 +112,34 @@ def generatePerturbData(psr,data,current_label,pretrained_model,t_label):
     perturbation = create_adversarial_pattern( data, current_label, pretrained_model, t_label = t_label )
     perturbation = np.squeeze(perturbation)
     data = np.squeeze(data)
-    p_perturbation = np.mean( perturbation ** 2, axis = 0 )
-    p_data = np.mean( np.squeeze(data) ** 2, axis = 0 ) + 0.00000000001
+    p_perturbation = np.var( perturbation  , )
+    p_data = np.var( data  )
 
-    if np.mean(p_perturbation/p_data) != 0:
-        eps = np.sqrt( psr * (1 / np.mean( p_perturbation / p_data )) )
-        adv_data = data + eps * perturbation
-        return np.expand_dims(adv_data,axis=0)
+    # p_perturbation = np.mean( (perturbation - np.mean(perturbation))**2  )
+    # p_data = np.mean( (data - np.mean(data,)) **2   )
+
+    # print(f'The perturbation maximum is {perturbation.max():.2f} and the minimum is {perturbation.min():.2f}')
+    # if np.mean(p_perturbation/p_data) != 0:
+        # eps = np.sqrt( psr * (1 / np.mean( p_perturbation / p_data )) )
+    eps = np.sqrt( psr / np.mean(p_perturbation/p_data) )
+    adv_data = data + eps * perturbation
+    return np.expand_dims(adv_data,axis=0)
         # print(f'eps is {psr * np.sqrt((1/np.mean(p_perturbation/p_data)))}')
-    else:
+    # else:
         # print('\nNo perturbation added, this may happen in targeted attack, input label is same as the targeted '
         #       'label\n')
-        n_p += 1
-        flag = np.expand_dims(data,axis=0)
-        return flag
-
+        # n_p += 1
+        # flag = np.expand_dims(data,axis=0)
+        # return flag
+def test():
+    per = perturbation[:,0,0]
+    ori_signal = data[:,0,0]
+    adv_data = data + 0.5*perturbation
+    plt.plot(per)
+    plt.ylim(-5,5)
+    plt.plot( ori_signal,label = 'Attack free' )
+    plt.plot( adv_data[:,0,0], label = 'Attacked')
+    plt.ylabel('Amplitude')
     # print(f'The input PSR is {psr}')
 def load_tf_model(path:str = "/content/drive/MyDrive/Colab Notebooks/AdversarialAttack/signFi_model"):
   return tf.keras.models.load_model(path)
@@ -246,19 +260,29 @@ def runAdvExsTestEps(input_CSI,labels,pretrained_model,eps,ifpltcmd:bool =False,
     '''
     labels: should be one hot coded
     '''
-    print(f'The eps is {eps}')
-    label_adv_pred_container = []
-    for i,data in enumerate(input_CSI):
-        data,current_label = np.expand_dims(data,axis=0),np.expand_dims(labels[i],axis=0)
-        ori_pred_label = np.argmax(pretrained_model.predict(data),axis = 1)
-        if ori_pred_label == np.argmax( current_label, axis=1 ):
-            advData = data + eps*create_adversarial_pattern(data,current_label,pretrained_model,t_label = t_label)
-            label_adv_pred_container.append( np.argmax( pretrained_model.predict( advData ), axis = 1 ) )
-        else:
-            label_adv_pred_container.append(ori_pred_label)
-    true_label = np.argmax( labels, axis = 1 )
-    label_adv_pred_container = np.squeeze(np.asarray( label_adv_pred_container ))
-    accuracy = np.sum( label_adv_pred_container == true_label ) / labels.shape[0 ]
+    # print(f'The eps is {eps}')
+    # label_adv_pred_container = []
+    # for i,data in enumerate(input_CSI):
+    #     data,current_label = np.expand_dims(data,axis=0),np.expand_dims(labels[i],axis=0)
+    #     ori_pred_label = np.argmax(pretrained_model.predict(data),axis = 1)
+    #     if ori_pred_label == np.argmax( current_label, axis=1 ):
+    #         advData = data + eps*create_adversarial_pattern(data,current_label,pretrained_model,t_label = t_label)
+    #         label_adv_pred_container.append( np.argmax( pretrained_model.predict( advData ), axis = 1 ) )
+    #     else:
+    #         label_adv_pred_container.append(ori_pred_label)
+    # true_label = np.argmax( labels, axis = 1 )
+    # label_adv_pred_container = np.squeeze(np.asarray( label_adv_pred_container ))
+    # accuracy = np.sum( label_adv_pred_container == true_label ) / labels.shape[0 ]
+    advData = [ ]
+    for i, test_data in enumerate( input_CSI ):
+        test_data, current_label = np.expand_dims( test_data, axis = 0 ), np.expand_dims(
+                labels[ i ], axis = 0
+                )
+        advData.append(
+                test_data + eps*create_adversarial_pattern(test_data,current_label,pretrained_model,t_label = t_label)
+                )
+    advData = np.concatenate( advData, axis = 0 )
+    loss, accuracy = pretrained_model.evaluate( advData, labels, verbose = 0 )
     if ifpltcmd:
       title = f'eps: {eps}, Accuracy: {accuracy:.2f}, target: {t_label}'
       plotSig.pltcm( label_test_pred = label_adv_pred_container, true_label = true_label, title = title )
@@ -272,38 +296,115 @@ if __name__ == '__main__':
     import Config, SignalPreprocess, gestureDataLoader, DeepNet, plotSig, TOOLS
     config = Config.getconfig( )
     '''Prepare data'''
+    # dataset_name = 'widar'
+    #
+    # _, config.test_data, _, config.test_label = gestureDataLoader.getData(
+    #         config, dataset_name, ifscale = True
+    #         )
     # choose dataset
     # dataset_name = 'widar'
     # config.D_range = 500
     # _, config.test_data, _, config.test_label = gestureDataLoader.getData(config, dataset_name, ifzscore = False)
     # config.pretrained_model_path = 'SavedModel/widar_model_loc[2]_ori[2]Rx123456'
     '''Run training process'''
-    for D_range in [5,10,20,30,40,50,500]:
-        config.D_range = D_range
-        runTrain( config = config, dataset_name = 'widar' )
+    # for D_range in [5,10,20,30,40,50,500]:
+    #     config.D_range = D_range
+    #     runTrain( config = config, dataset_name = 'widar' )
     '''Load pretrained model'''
     # pretrained_model = tf.keras.models.load_model(config.pretrained_model_path )
     '''Evaluation of adversarial samples'''
-    PSR_ACC = { }
-    for d_range in [ 5,10,20,30,40,50,500 ]:
+    procOBJ = gestureDataLoader.preprocessing()
+    EPS_ACC,PSR_ACC = { },{ }
+    dataset_name = 'signfi'
+    _, config.test_data, _, config.test_label = gestureDataLoader.getData(
+            config, dataset_name, ifscale = True
+            )
+    for d_range in [ 5,10,20,30,40, 50,500 ]:
+        EPS_ACC[ f'range{d_range}' ] = [ ]
         PSR_ACC[ f'range{d_range}' ] = [ ]
-        dataset_name = 'widar'
         config.D_range = d_range
-        _, config.test_data, _, config.test_label = gestureDataLoader.getData(
-                config, dataset_name, ifscale = True
-                )
-        print( f'The training data range from {config.test_data.min( )} to {config.test_data.max( )}' )
+        config.pretrained_model_path = f'SavedModel/signfi_model_lab_276_scale_{d_range}'+'.h5'
         pretrained_model = tf.keras.models.load_model( config.pretrained_model_path )
-        for psr_val in np.arange( 0, 0.13, 0.02 ):
-
-            # pretrained_model.summary( )
-            acc = DeepNet.runAdvExsTestPSR(
-                    input_CSI = config.test_data, labels = config.test_label, pretrained_model = pretrained_model,
-                    psr = psr_val, t_label = None
+        test_data = procOBJ.scale(config.test_data,d_range)
+        test_label = config.test_label
+        print( f'The training data range from {test_data.min( )} to {test_data.max( )}' )
+        # for eps in np.arange( 0, 0.07, 0.011 ):
+        #     # pretrained_model.summary( )
+        #     acc = DeepNet.runAdvExsTestEps(
+        #             input_CSI = test_data,
+        #             labels = test_label,
+        #             pretrained_model = pretrained_model,
+        #             eps = eps,
+        #             t_label = None
+        #             )
+        #     EPS_ACC[ f'range{d_range}' ].append( acc )
+        for psr_val in np.arange( 0,0.009, 0.001 ):
+            acc = runAdvExsTestPSR(
+                    input_CSI = test_data,
+                    labels = test_label,
+                    pretrained_model = pretrained_model,
+                    psr = psr_val,
+                    t_label = None
                     )
             PSR_ACC[ f'range{d_range}' ].append( acc )
-    PSR_ACC[f'eps'] = np.arange( 0, 0.13, 0.02 )
-    savemat('utils/resultsMat/PSR_ACC_widar.mat',PSR_ACC)
+    # EPS_ACC['eps'] = np.arange( 0, 0.07, 0.011 )
+    # PSR_ACC['PSR'] = np.arange( 0, 0.7, 0.1 )
+    # savemat('utils\\resultsMat\\PSR_ACC_signfi.mat',PSR_ACC)
+    # savemat( 'utils\\resultsMat\\EPS_ACC_signfi.mat', EPS_ACC )
+
+
+
+    # dataset_name = 'widar'
+    # _, config.test_data, _, config.test_label = gestureDataLoader.getData(
+    #         config, dataset_name, ifscale = True
+    #         )
+    # PSR_ACC = {}
+    # procOBJ = gestureDataLoader.preprocessing( )
+    # for flag in ['original','zscore']:
+    #     if flag == 'original':
+    #         config.pretrained_model_path = [ 'SavedModel/widar_model_loc[2]_ori[2]Rx123456',
+    #                                          'SavedModel/widar_model_loc[2]_ori[2]Rx123456_zscore' ]
+    #         pretrained_model = tf.keras.models.load_model( config.pretrained_model_path[ 0 ] )
+    #         test_data = config.test_data
+    #         test_label = config.test_label
+    #         PSR_ACC[ 'original' ] = [ ]
+    #     elif flag == 'zscore':
+    #         config.pretrained_model_path = ['SavedModel/widar_model_loc[2]_ori[2]Rx123456','SavedModel/widar_model_loc[2]_ori[2]Rx123456_zscore']
+    #         pretrained_model = tf.keras.models.load_model( config.pretrained_model_path[1] )
+    #         test_data = procOBJ.norm(config.test_data)
+    #         test_label = config.test_label
+    #         PSR_ACC[ 'zscore' ] = [ ]
+    #
+    #     print( f'The data mean {test_data.mean( )} variance {test_data.var( )}' )
+    #     for psr_val in np.arange( 0, 0.02, 0.002 ):
+    #         # pretrained_model.summary( )
+    #         acc = runAdvExsTestPSR(
+    #                 input_CSI = test_data, labels = test_label, pretrained_model = pretrained_model,
+    #                 psr = psr_val, t_label = None
+    #                 )
+    #         PSR_ACC[ f'{flag}' ].append( acc )
+    # savemat('utils/resultsMat/ori_zscore_var.mat',PSR_ACC)
+
+
+
+
+
+    # for d_range in [ 5,10,20,30,40,50,500 ]:
+    #     PSR_ACC[ f'range{d_range}' ] = [ ]
+    #     config.test_data = procOBJ.scale(config.test_data,D_range = d_range)
+    #     print( f'The training data range from {config.test_data.min( )} to {config.test_data.max( )}' )
+    #     config.pretrained_model_path = 'widar_model_loc[2]_ori[2]_scale_' + f'{d_range}' + '.h5'
+    #     pretrained_model = tf.keras.models.load_model( config.pretrained_model_path )
+    #     for psr_val in np.arange( 0, 0.13, 0.02 ):
+    #
+    #         # pretrained_model.summary( )
+    #         acc = DeepNet.runAdvExsTestPSR(
+    #                 input_CSI = config.test_data, labels = config.test_label, pretrained_model = pretrained_model,
+    #                 psr = psr_val, t_label = None
+    #                 )
+    #         PSR_ACC[ f'range{d_range}' ].append( acc )
+    # PSR_ACC[f'eps'] = np.arange( 0, 0.13, 0.02 )
+    # savemat('utils/resultsMat/PSR_ACC_widar1.mat',PSR_ACC)
     # PSR_ACC['eps'] = np.arange( 0, 0.13, 0.02 )
 
 

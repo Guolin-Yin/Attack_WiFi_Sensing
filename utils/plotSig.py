@@ -148,7 +148,7 @@ def pltAttackPerform(info,label,title):
             print(i)
         else:
             ax.plot( np.asarray(eps),np.asarray(acc), label = label[ i ] ,marker = 'o')
-        ax.set_xlabel('EPS',fontsize=17)
+        ax.set_xlabel('PSR',fontsize=17)
         ax.set_ylabel('Accuracy',fontsize=17)
         plt.title(title)
     ax.legend(fontsize=12)
@@ -331,14 +331,14 @@ def targeted():
             )
 def PSRPerform():
     '''The PSR param performance under differnt range of input'''
-    a = loadmat(pjoin(result_dir,"PSR_ACC_widar.mat"))
+    a = loadmat(pjoin(result_dir,"PSR_ACC_signfi.mat"))
     range5 = np.squeeze(a['range5'])
     range10 = np.squeeze(a['range10'])
     range20 = np.squeeze(a['range20'])
     range30 = np.squeeze(a['range30'])
     range40 = np.squeeze(a['range40'])
     range50 = np.squeeze(a['range50'])
-    eps = np.squeeze(a['eps'])
+    eps = np.squeeze(a['PSR'])
     range500 = np.squeeze(a['range500'])
     r5 = zip(eps,range5)
     r10 = zip( eps, range10 )
@@ -352,13 +352,14 @@ def PSRPerform():
                                                               'range 0 - 40','range 0 - 50','range 0 - 500'],
             title = None)
 def EPSPerform():
-    a = loadmat(pjoin(result_dir,"EPS_ACC.mat"))
+    a = loadmat(pjoin(result_dir,"EPS_ACC_signfi.mat"))
     range5 = np.squeeze(a['range5'])
     range10 = np.squeeze(a['range10'])
     range20 = np.squeeze(a['range20'])
     range30 = np.squeeze(a['range30'])
     range40 = np.squeeze(a['range40'])
     range50 = np.squeeze(a['range50'])
+    range500 = np.squeeze( a[ 'range500' ] )
     eps = np.squeeze(a['eps'])
     r5 = zip(eps,range5)
     r10 = zip( eps, range10 )
@@ -366,9 +367,20 @@ def EPSPerform():
     r30 = zip( eps, range30 )
     r40 = zip( eps, range40 )
     r50 = zip( eps, range50 )
-    pltAttackPerform(info = [r5,r10,r20,r30,r40,r50],label = ['range 0 - 5','range 0 - 10','range 0 - 20','range 0 - '
+    r500 = zip( eps, range500 )
+    pltAttackPerform(info = [r5,r10,r20,r30,r40,r50,r500],label = ['range 0 - 5','range 0 - 10','range 0 - 20','range 0 - '
                                                                                                         '30',
-                                                              'range 0 - 40','range 0 - 50'
+                                                              'range 0 - 40','range 0 - 50','range 0 - 500',
                                                               ],title = None)
+def zeroPerform():
+    a = loadmat(pjoin(result_dir,'ori_zscore_var.mat'),squeeze_me = True)
+    original = a[ 'original' ]
+    zscore = a[ 'zscore' ]
+    eps = np.arange( 0, 0.02, 0.002 )
+    ori = zip(eps,original)
+    z = zip(eps,zscore)
+    pltAttackPerform(info = [ori,z],label = ['original','zscore'],
+            title = None)
 if __name__ == '__main__':
-    PSRPerform()
+    # EPSPerform()
+    zeroPerform()
