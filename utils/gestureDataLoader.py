@@ -226,7 +226,9 @@ def getData(config, dataset_name:str,ifzscore:bool=False,ifscale:bool=False):
                 motion_sel = [ 1, 2, 3, 4, 5, 6 ],
                 # l = [ 2 ], o = [ 2 ], r = [ 'r1', 'r2', 'r3', 'r4', 'r5', 'r6' ]
                 )
-        config.pretrained_model_path = dataset_name + '_model_' + f'loc{config.location}_' + f'ori{config.orientation}' + f'Rx{config.receiver}'
+        config.pretrained_model_path = dataset_name + '_model_' + f'loc{config.location}_' + f'ori' \
+                                                                                             f'{config.orientation}' \
+                                       +f'_scale_{config.D_range}'+'.h5'#+ f'Rx{config.receiver}'
     elif dataset_name =='signfi':
         # config.data_dir = '/Users/guolinyin/Library/Mobile Documents/com~apple~CloudDocs/PhD Research Files/Dataset/SignFi/Dataset'
         config.data_dir = 'E:\SensingDataset\SignFi\Dataset'

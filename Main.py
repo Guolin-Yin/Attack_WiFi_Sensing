@@ -81,19 +81,19 @@ for d_range in [5,10,20,30,40,50]:
         PSR_ACC[ f'range{d_range}' ].append( acc )
 EPS_ACC = { }
 for d_range in [ 40, 50 ]:
-  EPS_ACC[ f'range{d_range}' ] = [ ]
-  for eps in np.arange( 0, 0.07, 0.011 ):
-    dataset_name = 'signfi'
-    config.D_range = d_range
-    _, config.test_data, _, config.test_label = gestureDataLoader.getData( config, dataset_name, ifscale = True )
-    print( f'The training data range from {config.test_data.min( )} to {config.test_data.max( )}' )
-    pretrained_model = tf.keras.models.load_model( config.pretrained_model_path )
-    # pretrained_model.summary( )
-    acc = DeepNet.runAdvExsTestEps(
-            input_CSI = config.test_data,
-            labels = config.test_label,
-            pretrained_model = pretrained_model,
-            eps = eps,
-            t_label = None
-            )
-    EPS_ACC[ f'range{d_range}' ].append( acc )
+    EPS_ACC[ f'range{d_range}' ] = [ ]
+    for eps in np.arange( 0, 0.07, 0.011 ):
+        dataset_name = 'signfi'
+        config.D_range = d_range
+        _, config.test_data, _, config.test_label = gestureDataLoader.getData( config, dataset_name, ifscale = True )
+        print( f'The training data range from {config.test_data.min( )} to {config.test_data.max( )}' )
+        pretrained_model = tf.keras.models.load_model( config.pretrained_model_path )
+        # pretrained_model.summary( )
+        acc = DeepNet.runAdvExsTestEps(
+                input_CSI = config.test_data,
+                labels = config.test_label,
+                pretrained_model = pretrained_model,
+                eps = eps,
+                t_label = None
+                )
+        EPS_ACC[ f'range{d_range}' ].append( acc )

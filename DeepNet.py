@@ -21,7 +21,9 @@ sys.path.append( current_dir )
 sys.path.append( current_dir + '\\utils' )
 sys.path.append( 'G:\\我的云端硬盘\\Colab Notebooks\\SensingDataset\\SignFi\\Dataset' )
 import Config, SignalPreprocess, gestureDataLoader, DeepNet, plotSig
+from scipy.io import savemat, loadmat
 gpus = tf.config.experimental.list_physical_devices( 'GPU' )
+
 if gpus:
     try:
         for gpu in gpus:
@@ -58,8 +60,8 @@ if gpus:
 #         return x
 class myCallback(tf.keras.callbacks.Callback):
 	def on_epoch_end(self, epoch, logs={}):
-		if(logs.get('val_acc') > 0.95):
-			print("\nReached %2.2f%% accuracy, so stopping training!!" %(0.95*100))
+		if(logs.get('val_acc') > 0.88):
+			print("\nReached %2.2f%% accuracy, so stopping training!!" %(0.88*100))
 			self.model.stop_training = True
 class AlexNetTF:
     def __init__( self,config=None ):
@@ -103,6 +105,9 @@ class AlexNetTF:
         Net = Model( inputs=input, outputs=output )
         return Net
 def generatePerturbData(psr,data,current_label,pretrained_model,t_label):
+    global n_p
+    n_p = 0
+    '''One sample at a time'''
     perturbation = create_adversarial_pattern( data, current_label, pretrained_model, t_label = t_label )
     perturbation = np.squeeze(perturbation)
     data = np.squeeze(data)
@@ -115,7 +120,10 @@ def generatePerturbData(psr,data,current_label,pretrained_model,t_label):
         return np.expand_dims(adv_data,axis=0)
         # print(f'eps is {psr * np.sqrt((1/np.mean(p_perturbation/p_data)))}')
     else:
-        flag = 'Zero'
+        # print('\nNo perturbation added, this may happen in targeted attack, input label is same as the targeted '
+        #       'label\n')
+        n_p += 1
+        flag = np.expand_dims(data,axis=0)
         return flag
 
     # print(f'The input PSR is {psr}')
@@ -213,7 +221,7 @@ def runAdvExsTestPSR(input_CSI,labels,pretrained_model,psr,ifpltcmd:bool =False,
         label_adv_pred_container = np.squeeze(np.asarray( label_adv_pred_container ))
         accuracy = np.sum( label_adv_pred_container == true_label ) / labels.shape[0 ]
     elif method == 'eval':
-        print( f'Testing the accuracy of adversarial sampels for PSR = {psr}, using evaluation method' )
+        # print( f'Testing the accuracy of adversarial sampels for PSR = {psr}, using evaluation method' )
         advData = [ ]
         for i, test_data in enumerate( input_CSI ):
             test_data, current_label = np.expand_dims( test_data, axis = 0 ), np.expand_dims(
@@ -226,15 +234,14 @@ def runAdvExsTestPSR(input_CSI,labels,pretrained_model,psr,ifpltcmd:bool =False,
                             )
                     )
         advData = np.concatenate( advData, axis = 0 )
-        loss, accuracy = pretrained_model.evaluate( advData, config.test_label, verbose = 0 )
+        loss, accuracy = pretrained_model.evaluate( advData, labels, verbose = 0 )
     if ifpltcmd:
         label_pred = np.argmax(pretrained_model.predict( advData ),axis=1)
         label_true = np.argmax(labels,axis=1)
         title = f'PSR: {psr}, Accuracy: {accuracy:.2f}, target: {t_label}'
         plotSig.pltcm( label_test_pred = label_pred, true_label = label_true, title = title )
-    print(f'The accuracy of adversarial samples for PSR = {psr} is {accuracy:.2f}')
+    print(f'The accuracy of adversarial samples for PSR = {psr:.5f} is {accuracy:.2f}')
     return accuracy
-
 def runAdvExsTestEps(input_CSI,labels,pretrained_model,eps,ifpltcmd:bool =False,t_label:int=None):
     '''
     labels: should be one hot coded
@@ -252,9 +259,9 @@ def runAdvExsTestEps(input_CSI,labels,pretrained_model,eps,ifpltcmd:bool =False,
     true_label = np.argmax( labels, axis = 1 )
     label_adv_pred_container = np.squeeze(np.asarray( label_adv_pred_container ))
     accuracy = np.sum( label_adv_pred_container == true_label ) / labels.shape[0 ]
-    # if ifpltcmd:
-    #   title = f'eps: {eps}, Accuracy: {accuracy:.2f}, target: {t_label}'
-    #   plotSig.pltcm( label_test_pred = label_adv_pred_container, true_label = true_label, title = title )
+    if ifpltcmd:
+      title = f'eps: {eps}, Accuracy: {accuracy:.2f}, target: {t_label}'
+      plotSig.pltcm( label_test_pred = label_adv_pred_container, true_label = true_label, title = title )
     print( f'Accuracy for eps = {eps:.3f} is {accuracy:.2f}' )
     return accuracy
 if __name__ == '__main__':
@@ -266,17 +273,44 @@ if __name__ == '__main__':
     config = Config.getconfig( )
     '''Prepare data'''
     # choose dataset
-    dataset_name = 'signfi'
-    config.D_range = 1
-    _, config.test_data, _, config.test_label = gestureDataLoader.getData(config, dataset_name, ifscale = True)
+    # dataset_name = 'widar'
+    # config.D_range = 500
+    # _, config.test_data, _, config.test_label = gestureDataLoader.getData(config, dataset_name, ifzscore = False)
+    # config.pretrained_model_path = 'SavedModel/widar_model_loc[2]_ori[2]Rx123456'
     '''Run training process'''
-    # runTrain( config = config, dataset_name = 'signfi' )
+    for D_range in [5,10,20,30,40,50,500]:
+        config.D_range = D_range
+        runTrain( config = config, dataset_name = 'widar' )
     '''Load pretrained model'''
-    pretrained_model = tf.keras.models.load_model(config.pretrained_model_path )
+    # pretrained_model = tf.keras.models.load_model(config.pretrained_model_path )
     '''Evaluation of adversarial samples'''
-    # testAdvExsPSR(config.test_data,config.test_label,pretrained_model,psr =0.2)
-    runAdvExsTestPSR( config.test_data, config.test_label, pretrained_model, psr = 0.06 )
+    PSR_ACC = { }
+    for d_range in [ 5,10,20,30,40,50,500 ]:
+        PSR_ACC[ f'range{d_range}' ] = [ ]
+        dataset_name = 'widar'
+        config.D_range = d_range
+        _, config.test_data, _, config.test_label = gestureDataLoader.getData(
+                config, dataset_name, ifscale = True
+                )
+        print( f'The training data range from {config.test_data.min( )} to {config.test_data.max( )}' )
+        pretrained_model = tf.keras.models.load_model( config.pretrained_model_path )
+        for psr_val in np.arange( 0, 0.13, 0.02 ):
 
+            # pretrained_model.summary( )
+            acc = DeepNet.runAdvExsTestPSR(
+                    input_CSI = config.test_data, labels = config.test_label, pretrained_model = pretrained_model,
+                    psr = psr_val, t_label = None
+                    )
+            PSR_ACC[ f'range{d_range}' ].append( acc )
+    PSR_ACC[f'eps'] = np.arange( 0, 0.13, 0.02 )
+    savemat('utils/resultsMat/PSR_ACC_widar.mat',PSR_ACC)
+    # PSR_ACC['eps'] = np.arange( 0, 0.13, 0.02 )
+
+
+    # testAdvExsPSR(config.test_data,config.test_label,pretrained_model,psr =0.2)
+    # for i in np.arange(0,0.01,0.0001):
+    # runAdvExsTestEps( config.test_data, config.test_label, pretrained_model, eps = 0.3,t_label = 3,ifpltcmd=True)
+    # runAdvExsTestPSR( config.test_data, config.test_label, pretrained_model, psr = 0.03,t_label = None,ifpltcmd=True)
     # accuracy_attack_free = pretrained_model.evaluate(config.test_data, config.test_label, verbose=1)
     # all_acc = []
     # all_t_acc = {}
