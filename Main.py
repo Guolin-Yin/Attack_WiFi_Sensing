@@ -51,7 +51,7 @@ for t in np.arange( 1, 7, 1 ):
   acc_container[f'target{t}'] = []
   for ep in np.arange( 0.0, 3, 0.1 ):
     accuracy = DeepNet.runAdvExsTestPSR(
-            input_CSI = config.test_data, labels = config.test_label, pretrained_model = pretrained_model, psr =,
+            input_CSI = config.test_data, labels = config.test_label, pretrained_model = pretrained_model, psr =3e-4,
             ifpltcmd = False, t_label = int( t )
             )
     acc_container[ f'target{t}' ].append(accuracy)
@@ -97,3 +97,26 @@ for d_range in [ 40, 50 ]:
                 t_label = None
                 )
         EPS_ACC[ f'range{d_range}' ].append( acc )
+'''Deep fool and universal perturbation'''
+uni_per = loadmat( 'universal_perturbation_0.02.mat' )[ 'universal_perturbation' ]
+
+deepfool_per = loadmat('utils\\resultsMat\\signfi_lab_276_deepfool.mat')[ 'perturbation' ]
+
+acc, perturb, Advex = runAdvExsTestPSR(
+        input_CSI = test_data,
+        labels = test_label,
+        pretrained_model = pretrained_model,
+        psr = 5.6e-3,
+        t_label = None,
+        attack_method = 'fgsm'
+        )
+t_data = np.mean( test_data[ 0 ], axis = 1 ).mean( axis = 1 )
+uni_t_data = (test_data + np.repeat( uni_per, test_data.__len__( ), axis = 0 ))[ 0 ].mean( axis = 1 ).mean( axis = 1 )
+df_t_data = (test_data + deepfool_per)[ 0 ].mean( axis = 1 ).mean( axis = 1 )
+fg_t_data = Advex[ 0 ].mean( axis = 1 ).mean( axis = 1 )
+plt.plot( t_data, label = 'original' )
+plt.plot( uni_t_data, label = 'Universal perturbation (PSR = 5.6e-3)' )
+plt.plot( df_t_data, label = 'Deepfool (PSR = 2.3e-4)' )
+plt.plot( fg_t_data, label = 'One-step FGSM (PSR = 5.6e-3)' )
+plt.ylabel( 'Amplitude' )
+plt.legend( )

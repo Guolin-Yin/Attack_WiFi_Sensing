@@ -6,7 +6,7 @@ from scipy.io import savemat, loadmat
 import scipy.io as sio
 from os.path import dirname, join as pjoin
 import os
-result_dir = os.getcwd() + '\\resultsMat'
+result_dir = os.getcwd() + '/resultsMat'
 class pltConfusionMatrix():
     def __init__( self ):
         pass
@@ -148,7 +148,7 @@ def pltAttackPerform(info,label,title):
             print(i)
         else:
             ax.plot( np.asarray(eps),np.asarray(acc), label = label[ i ] ,marker = 'o')
-        ax.set_xlabel('PSR',fontsize=17)
+        ax.set_xlabel('EPS',fontsize=17)
         ax.set_ylabel('Accuracy',fontsize=17)
         plt.title(title)
     ax.legend(fontsize=12)
@@ -383,4 +383,4 @@ def zeroPerform():
             title = None)
 if __name__ == '__main__':
     # EPSPerform()
-    zeroPerform()
+    EPSPerform()

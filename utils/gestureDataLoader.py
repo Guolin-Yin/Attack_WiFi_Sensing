@@ -99,9 +99,6 @@ class widarDataLoader:
                 for data_file_name in data_files:
                     file_path = os.path.join( data_root, data_file_name )
                     try:
-                        data_amp = sio.loadmat( file_path )['csiAmplitude']
-                        data_phase = sio.loadmat( file_path )[ 'csiPhase' ]
-                        data_buf = np.concatenate((data_amp, data_phase),axis=1 )
                         label_buf = int( data_file_name.split( '-' )[ 1 ] )
                         location = int( data_file_name.split( '-' )[ 2 ] )
                         orientation = int( data_file_name.split( '-' )[ 3 ] )
@@ -116,6 +113,9 @@ class widarDataLoader:
                             continue
                         if receiver not in self.config.receiver:
                             continue
+                        data_amp = sio.loadmat( file_path )[ 'csiAmplitude' ]
+                        data_phase = sio.loadmat( file_path )[ 'csiPhase' ]
+                        data_buf = np.concatenate( (data_amp, data_phase), axis=1 )
                     except Exception:
                         continue
                     # Save to List
@@ -208,11 +208,16 @@ class BVPDataLoader:
                 )
         # data(ndarray): [N,T_MAX,20,20,1], label(ndarray): [N,N_MOTION]
         return [data_train, data_test, label_train, label_test]
-def getData(config, dataset_name:str,ifzscore:bool=False,ifscale:bool=False):
-    procObj = preprocessing()
+def getData(config, dataset_name:str,):
+    # procObj = preprocessing()
     if dataset_name == 'widar':
-        config.data_dir = [ 'E:\\SensingDataset\\Widar\\20181109\\User1',
-                            'E:\\SensingDataset\\Widar\\20181115\\User1' ]
+        # config.data_dir = [ 'E:\\SensingDataset\\Widar\\20181109',
+        #                     'E:\\SensingDataset\\Widar\\20181115' ]
+        if config.data_dir is not None:
+            print(f'loading default data dir {config.data_dir}')
+            config.data_dir = [
+                                'E:\\SensingDataset\\Widar\\20181118\\user2'
+                    ]
         config.receiver = [
                 'r1',
                 'r2',
@@ -220,27 +225,21 @@ def getData(config, dataset_name:str,ifzscore:bool=False,ifscale:bool=False):
                 'r4', 'r5', 'r6'
                 ]
         config.location = [ 2 ]
-        config.orientation = [ 2 ]
+        config.orientation = [ 1,2,3,4,5,6 ]
         load_widar_obj = widarDataLoader( config )
         X_train, X_test, y_train, y_test = load_widar_obj.loadData(
                 motion_sel = [ 1, 2, 3, 4, 5, 6 ],
-                # l = [ 2 ], o = [ 2 ], r = [ 'r1', 'r2', 'r3', 'r4', 'r5', 'r6' ]
                 )
-        config.pretrained_model_path = dataset_name + '_model_' + f'loc{config.location}_' + f'ori' \
-                                                                                             f'{config.orientation}' \
-                                       +f'_scale_{config.D_range}'+'.h5'#+ f'Rx{config.receiver}'
+        config.pretrained_model_path = 'SavedModel\\'+ dataset_name + '_model_' + f'loc123456_' + \
+                                       f'ori123456' \
+                                       +f'_scale_{config.D_range}_user_2_envir_2'+'.h5'#+ f'Rx{config.receiver}'
     elif dataset_name =='signfi':
         # config.data_dir = '/Users/guolinyin/Library/Mobile Documents/com~apple~CloudDocs/PhD Research Files/Dataset/SignFi/Dataset'
         config.data_dir = 'E:\SensingDataset\SignFi\Dataset'
         config.source = 'lab_276'
         signFiLoader = signDataLoader( config=config )
         X_train, X_test, y_train, y_test = signFiLoader.loadData( )
-        config.pretrained_model_path = 'SavedModel\\' + dataset_name + '_model_' + f'{config.source}'+f'_scale' \
-                                                                                                   f'_' \
-                                                                                                      f'' \
-                                                                                                      f'' \
-                                                                                                      f'' \
-                                                                                                      f'{config.D_range}' +'.h5'
+        config.pretrained_model_path = 'SavedModel\\' + dataset_name + '_model_' + f'{config.source}'+f'_scale_{config.D_range}' +'.h5'
     elif dataset_name == 'BVP':
         '''test BVP loader'''
         config.data_dir = 'E:\SensingDataset\BVP_attack'

@@ -6,34 +6,57 @@
 # 	if kwargs:
 # 		print(f'args is {kwargs}')
 # 		print(type(kwargs))
-def outer(func):
-
-	def inner(x1,y1):
-		nonlocal x,y
-		y+=y1
-		x+=x1
-		func()
-		print(f'now, x={x}, y={y}')
-	return inner
-move = outer
-move(1,2)
-move(-2,2)
+# def outer(func):
+#
+# 	def inner(x1,y1):
+# 		nonlocal x1,y1
+# 		y+=y1
+# 		x+=x1
+# 		func()
+# 		print(f'now, x={x}, y={y}')
+# 	return inner
+# move = outer
+# move(1,2)
+# move(-2,2)
 
 import time
-def time_master(func):
-	def call_func():
-		print('start')
-		start = time.time()
-		func()
-		end = time.time()
-		print('end')
-		print(f'total time: {(end-start):.2f}s')
-	return call_func
-@time_master
-def myfunc():
-	time.sleep(2)
-	print('this is my func')
-myfunc()
+# def time_master(func,x):
+# 	def call_func():
+# 		print('start',x)
+# 		start = time.time()
+# 		func()
+# 		end = time.time()
+# 		print('end')
+# 		print(f'total time: {(end-start):.2f}s')
+# 	return call_func
+# @time_master
+# def myfunc(x=0):
+# 	time.sleep(0.5)
+# 	print('this is my func')
+# myfunc()
+def time_master( func ):
+	def call_func( c,m ):
+		start = time.time( )
+		func( c )
+		end = time.time( )
+		print( 'end' )
+		print( f'total time: {(end - start):.2f}s' )
+		# print( f'msg is {msg}' )
 
-func = time_master(myfunc)
-func()
+	return call_func
+def logger(msg):
+	def time_master(func):
+		def call_func(c):
+			start = time.time( )
+			func( c )
+			end = time.time( )
+			print( 'end' )
+			print( f'total time: {(end - start):.2f}s' )
+			print(f'msg is {msg}')
+		return call_func
+	return time_master
+@time_master
+def funA(c):
+	time.sleep(0.5)
+	print('this is funA', c)
+funA(c=123,m=345)
