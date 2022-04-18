@@ -27,7 +27,7 @@ pretrained_model.summary( )
 #         ifpltcmd = False
 #     accuracy = DeepNet.runAdvExsTest(
 #           input_CSI = config.test_data,
-#           labels = config.test_label,
+#           labels_pred = config.test_label,
 #           pretrained_model = pretrained_model,
 #           eps = ep,
 #           ifpltcmd = ifpltcmd
@@ -63,7 +63,18 @@ print(acc_container)
 #     config.D_range = i
 #     runTrain( config = config, dataset_name = 'signfi' )
 # config.pretrained_model_path = 'SavedModel/signFi_model_lab_276_zscore'
-
+def h5data():
+	uni_per_widar_in_domain = loadmat(os.path.join(config.pert_Mat_Root,
+		'uni_per_widar_model_loc2_ori123456_scale_1_user_2_envir_2_20181118.mat' ))['universal_perturbation']
+	path = os.path.join(config.pert_Mat_Root, 'UAP_data.h5')
+	with h5py.File(path,'w') as hdf:
+		hdf.create_dataset('universal_perturbation',data = uni_per_widar_in_domain)
+	with h5py.File( path, "r" ) as f:
+		# List all groups
+		print( "Keys: %s" % f.keys( ) )
+		a_group_key = list( f.keys( ) )[ 0 ]
+		# Get the data
+		data = list( f[ a_group_key ] )
 PSR_ACC = {}
 for d_range in [5,10,20,30,40,50]:
     PSR_ACC[f'range{d_range}'] = []
@@ -114,9 +125,29 @@ t_data = np.mean( test_data[ 0 ], axis = 1 ).mean( axis = 1 )
 uni_t_data = (test_data + np.repeat( uni_per, test_data.__len__( ), axis = 0 ))[ 0 ].mean( axis = 1 ).mean( axis = 1 )
 df_t_data = (test_data + deepfool_per)[ 0 ].mean( axis = 1 ).mean( axis = 1 )
 fg_t_data = Advex[ 0 ].mean( axis = 1 ).mean( axis = 1 )
-plt.plot( t_data, label = 'original' )
-plt.plot( uni_t_data, label = 'Universal perturbation (PSR = 5.6e-3)' )
-plt.plot( df_t_data, label = 'Deepfool (PSR = 2.3e-4)' )
-plt.plot( fg_t_data, label = 'One-step FGSM (PSR = 5.6e-3)' )
+plt.plot( label='original' )
+plt.plot( label='Universal perturbation (PSR = 5.6e-3)' )
+plt.plot( label='Deepfool (PSR = 2.3e-4)' )
+plt.plot( label='One-step FGSM (PSR = 5.6e-3)' )
 plt.ylabel( 'Amplitude' )
 plt.legend( )
+
+def pgd(model, X, y, epsilon, alpha, num_iter):
+    """ Construct FGSM adversarial examples on the examples X"""
+    delta = torch.zeros_like(X, requires_grad=True)
+    for t in range(num_iter):
+        loss = nn.CrossEntropyLoss()(model(X + delta), y)
+        loss.backward()
+        delta.data = (delta + X.shape[0]*alpha*delta.grad.data).clamp(-epsilon,epsilon)
+        delta.grad.zero_()
+    return delta.detach()
+
+def pgd_linf(model, X, y, epsilon, alpha, num_iter):
+    """ Construct FGSM adversarial examples on the examples X"""
+    delta = torch.zeros_like(X, requires_grad=True)
+    for t in range(num_iter):
+        loss = nn.CrossEntropyLoss()(model(X + delta), y)
+        loss.backward()
+        delta.data = (delta + alpha*delta.grad.detach().sign()).clamp(-epsilon,epsilon)
+        delta.grad.zero_()
+    return delta.detach()

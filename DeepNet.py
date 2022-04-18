@@ -1,11 +1,14 @@
 '''Tensorflow'''
-from tensorflow.keras.layers import Dense, Input, Softmax,ZeroPadding2D,MaxPooling2D,Conv2D,Flatten,Lambda,Dropout,Softmax
+from tensorflow.keras.layers import Dense, Input, Softmax,ZeroPadding2D,MaxPooling2D,Conv2D,Flatten,\
+    GlobalAveragePooling2D,Lambda,Dropout,LSTM,BatchNormalization
 from tensorflow.keras.models import Model
 from tensorflow.keras import backend as K
 from keras.callbacks import ReduceLROnPlateau
 from sklearn.model_selection import train_test_split
 from tensorflow.keras.utils import to_categorical
 import tensorflow as tf
+from tensorflow.python.ops.gen_experimental_dataset_ops import dataset_to_tf_record
+from tqdm import tqdm
 '''Pytorch'''
 # import torch
 # import torch.nn as nn
@@ -17,19 +20,15 @@ import numpy as np
 import sys
 import os
 import copy
-current_dir = os.getcwd( )
-sys.path.append( current_dir )
-sys.path.append( current_dir + '\\utils' )
-sys.path.append( 'G:\\我的云端硬盘\\Colab Notebooks\\SensingDataset\\SignFi\\Dataset' )
-sys.path.append( "/Users/guolinyin/Google 云端硬盘/Colab Notebooks/AdvAttackandDefense/utils" )
-
+for data_root, data_dirs, data_files in os.walk( os.getcwd( ) ):
+    for rt in data_dirs:
+        sys.path.append( os.path.join(data_root,rt) )
 import Config, SignalPreprocess, gestureDataLoader, DeepNet, plotSig, TOOLS
-
-
 from scipy.io import savemat, loadmat
 import matplotlib.pyplot as plt
 from DeepFool import deepfool
 from Universal_pert import universal_perturbation
+from Experiments import scaleDeepfool
 gpus = tf.config.experimental.list_physical_devices( 'GPU' )
 if gpus:
     try:
@@ -65,65 +64,506 @@ if gpus:
 #         # x = F.relu( self.fc2( x ) )
 #         # x = self.fc3( x )
 #         return x
+config = Config.getconfig( )
+procOBJ = gestureDataLoader.preprocessing( )
 class myCallback(tf.keras.callbacks.Callback):
 	def on_epoch_end(self, epoch, logs={}):
-		if(logs.get('val_acc') > 0.88):
-			print("\nReached %2.2f%% accuracy, so stopping training!!" %(0.88*100))
+		if logs.get('val_acc') > 0.95 and logs.get('val_loss')<0.1:
+			print("\nReached %2.2f%% accuracy, so stopping training!!" %(0.95*100))
 			self.model.stop_training = True
 class AlexNetTF:
     def __init__( self,config=None ):
         self.config = config
         # self.initGPU()
-    def buildModel( self ,):
-        input = Input( self.config.input_shape, name = 'input_layer' )
-        conv_1 = Conv2D(
-                filters = 96, kernel_size = (11, 5), strides = 2, input_shape = self.config.input_shape,
-                padding = 'valid',
-                activation = 'relu', name = 'Conv_1'
-                )( input )
-        MP_1 = MaxPooling2D( pool_size = 3, strides = 1, name = 'Maxpool_1' )( conv_1 )
+    def buildModel( self , choice = 'defult'):
+        if choice == 'defult':
+            input = Input( self.config.input_shape, name = 'input_layer' )
+            conv_1 = Conv2D(
+                    filters = 96, kernel_size = (11, 5), strides = 2, input_shape = self.config.input_shape,
+                    padding = 'valid',
+                    activation = 'relu', name = 'Conv_1'
+                    )( input )
+            MP_1 = MaxPooling2D( pool_size = 3, strides = 1, name = 'Maxpool_1' )( conv_1 )
 
-        PD_1 = ZeroPadding2D( padding = 2, name = 'Padding_layer_1' )( MP_1 )
-        conv_2 = Conv2D( filters = 256, kernel_size = 5, strides = 1, padding = 'valid', name = 'Conv_2' )( PD_1 )
-        MP_2 = MaxPooling2D( pool_size = 3, strides = 2, name = 'Maxpool_2' )( conv_2 )
-        Padding_leayer_2 = ZeroPadding2D( padding = 1, name = 'Padding_leayer_2' )( MP_2 )
-        Conv_3 = Conv2D(
-                filters = 384, activation = 'relu', kernel_size = 3, strides = 1, padding = 'valid',
-                name = 'Conv_3'
-                )( Padding_leayer_2 )
-        Padding_layer_3 = ZeroPadding2D( padding = 1, name = 'Padding_layer_3' )( Conv_3 )
-        Conv_4 = Conv2D(
-                filters = 384, activation = 'relu', kernel_size = 3, strides = 1, padding = 'valid',
-                name = 'Conv_4'
-                )( Padding_layer_3 )
-        Padding_layer_4 = ZeroPadding2D( padding = 1, name = 'Padding_layer_4' )( Conv_4 )
-        Conv_5 = Conv2D(
-                filters = 256, activation = 'relu', kernel_size = (4, 3), strides = 1, padding = 'valid',
-                name = 'Conv_5'
-                )( Padding_layer_4 )
-        Maxpool_3 = MaxPooling2D( pool_size = 3, strides = 2, name = 'Maxpool_3' )( Conv_5 )
-        dp = Dropout( 0.5 )( Maxpool_3 )
-        ft = Flatten( )( dp )
-        FC_1 = Dense( units = 256, name = 'FC_1' )( ft )
-        FC_2 = Dense( units = 1280, name = 'FC_2' )( FC_1 )
-        output = Lambda( lambda x: K.l2_normalize( x, axis = -1 ),name = 'lambda_layer' )( FC_2 )
-        fc = Dense( units=self.config.N_classes, name="fine_tune_layer" )( output )
-        output = Softmax( )( fc )
+            PD_1 = ZeroPadding2D( padding = 2, name = 'Padding_layer_1' )( MP_1 )
+            conv_2 = Conv2D( filters = 256, kernel_size = 5, strides = 1, padding = 'valid', name = 'Conv_2' )( PD_1 )
+            MP_2 = MaxPooling2D( pool_size = 3, strides = 2, name = 'Maxpool_2' )( conv_2 )
+            Padding_leayer_2 = ZeroPadding2D( padding = 1, name = 'Padding_leayer_2' )( MP_2 )
+            Conv_3 = Conv2D(
+                    filters = 384, activation = 'relu', kernel_size = 3, strides = 1, padding = 'valid',
+                    name = 'Conv_3'
+                    )( Padding_leayer_2 )
+            Padding_layer_3 = ZeroPadding2D( padding = 1, name = 'Padding_layer_3' )( Conv_3 )
+            Conv_4 = Conv2D(
+                    filters = 384, activation = 'relu', kernel_size = 3, strides = 1, padding = 'valid',
+                    name = 'Conv_4'
+                    )( Padding_layer_3 )
+            Padding_layer_4 = ZeroPadding2D( padding = 1, name = 'Padding_layer_4' )( Conv_4 )
+            Conv_5 = Conv2D(
+                    filters = 256, activation = 'relu', kernel_size = (4, 3), strides = 1, padding = 'valid',
+                    name = 'Conv_5'
+                    )( Padding_layer_4 )
+            Maxpool_3 = MaxPooling2D( pool_size = 3, strides = 2, name = 'Maxpool_3' )( Conv_5 )
+            dp = Dropout( 0.5 )( Maxpool_3 )
+            ft = Flatten( )( dp )
+            FC_1 = Dense( units = 256, name = 'FC_1' )( ft )
+            FC_2 = Dense( units = 1280, name = 'FC_2' )( FC_1 )
+            output = Lambda( lambda x: K.l2_normalize( x, axis = -1 ),name = 'lambda_layer' )( FC_2 )
+            fc = Dense( units=self.config.N_classes, name="fine_tune_layer" )( output )
+            output = Softmax( )( fc )
+        elif choice == 'alex1':
+            input = Input( self.config.input_shape, name = 'input_layer' )
+            conv_1 = Conv2D(
+                    filters = 96, kernel_size = (11, 5), strides = 2, input_shape = self.config.input_shape,
+                    padding = 'valid',
+                    activation = 'relu', name = 'Conv_1'
+                    )( input )
+            MP_1 = MaxPooling2D( pool_size = 3, strides = 1, name = 'Maxpool_1' )( conv_1 )
+
+            PD_1 = ZeroPadding2D( padding = 2, name = 'Padding_layer_1' )( MP_1 )
+            conv_2 = Conv2D( filters = 256, kernel_size = 5, strides = 1, padding = 'valid', name = 'Conv_2' )( PD_1 )
+            MP_2 = MaxPooling2D( pool_size = 3, strides = 2, name = 'Maxpool_2' )( conv_2 )
+            Padding_leayer_2 = ZeroPadding2D( padding = 1, name = 'Padding_leayer_2' )( MP_2 )
+            Conv_3 = Conv2D(
+                    filters = 384, activation = 'relu', kernel_size = 3, strides = 1, padding = 'valid',
+                    name = 'Conv_3'
+                    )( Padding_leayer_2 )
+            Padding_layer_3 = ZeroPadding2D( padding = 1, name = 'Padding_layer_3' )( Conv_3 )
+            Conv_4 = Conv2D(
+                    filters = 384, activation = 'relu', kernel_size = 3, strides = 1, padding = 'valid',
+                    name = 'Conv_4'
+                    )( Padding_layer_3 )
+            Padding_layer_4 = ZeroPadding2D( padding = 1, name = 'Padding_layer_4' )( Conv_4 )
+            Conv_5 = Conv2D(
+                    filters = 256, activation = 'relu', kernel_size = (4, 3), strides = 1, padding = 'valid',
+                    name = 'Conv_5'
+                    )( Padding_layer_4 )
+            Maxpool_3 = MaxPooling2D( pool_size = 3, strides = 2, name = 'Maxpool_3' )( Conv_5 )
+            dp = Dropout( 0.5 )( Maxpool_3 )
+            ft = Flatten( )( dp )
+            FC_1 = Dense( units = 256, name = 'FC_1' )( ft )
+            FC_2 = Dense( units = 2560, name = 'FC_2' )( FC_1 )
+            output = Lambda( lambda x: K.l2_normalize( x, axis = -1 ),name = 'lambda_layer' )( FC_2 )
+            fc = Dense( units=self.config.N_classes, name="fine_tune_layer" )( output )
+            output = Softmax( )( fc )
+        elif choice == 'alex2':
+            input = Input( self.config.input_shape, name = 'input_layer' )
+            conv_1 = Conv2D(
+                    filters = 48, kernel_size = (11, 5), strides = 2, input_shape = self.config.input_shape,
+                    padding = 'valid',
+                    activation = 'relu', name = 'Conv_1'
+                    )( input )
+            MP_1 = MaxPooling2D( pool_size = 3, strides = 1, name = 'Maxpool_1' )( conv_1 )
+
+            PD_1 = ZeroPadding2D( padding = 2, name = 'Padding_layer_1' )( MP_1 )
+            conv_2 = Conv2D( filters = 128, kernel_size = 5, strides = 1, padding = 'valid', name = 'Conv_2' )( PD_1 )
+            MP_2 = MaxPooling2D( pool_size = 3, strides = 2, name = 'Maxpool_2' )( conv_2 )
+            Padding_leayer_2 = ZeroPadding2D( padding = 1, name = 'Padding_leayer_2' )( MP_2 )
+            Conv_3 = Conv2D(
+                    filters = 264, activation = 'relu', kernel_size = 3, strides = 1, padding = 'valid',
+                    name = 'Conv_3'
+                    )( Padding_leayer_2 )
+            Padding_layer_3 = ZeroPadding2D( padding = 1, name = 'Padding_layer_3' )( Conv_3 )
+            Conv_4 = Conv2D(
+                    filters = 128, activation = 'relu', kernel_size = 3, strides = 1, padding = 'valid',
+                    name = 'Conv_4'
+                    )( Padding_layer_3 )
+            Padding_layer_4 = ZeroPadding2D( padding = 1, name = 'Padding_layer_4' )( Conv_4 )
+            Conv_5 = Conv2D(
+                    filters = 128, activation = 'relu', kernel_size = (4, 3), strides = 1, padding = 'valid',
+                    name = 'Conv_5'
+                    )( Padding_layer_4 )
+            Maxpool_3 = MaxPooling2D( pool_size = 3, strides = 2, name = 'Maxpool_3' )( Conv_5 )
+            dp = Dropout( 0.5 )( Maxpool_3 )
+            ft = Flatten( )( dp )
+            FC_1 = Dense( units = 200, name = 'FC_1' )( ft )
+            FC_2 = Dense( units = 1024, name = 'FC_2' )( FC_1 )
+            output = Lambda( lambda x: K.l2_normalize( x, axis = -1 ),name = 'lambda_layer' )( FC_2 )
+            fc = Dense( units=self.config.N_classes, name="fine_tune_layer" )( output )
+            output = Softmax( )( fc )
+        elif choice == 'alex3':
+            input = Input( self.config.input_shape, name = 'input_layer' )
+            conv_1 = Conv2D(
+                    filters = 48, kernel_size = (10, 4), strides = 1, input_shape = self.config.input_shape,
+                    padding = 'valid',
+                    activation = 'relu', name = 'Conv_1'
+                    )( input )
+            MP_1 = MaxPooling2D( pool_size = 3, strides = 2, name = 'Maxpool_1' )( conv_1 )
+
+            PD_1 = ZeroPadding2D( padding = 2, name = 'Padding_layer_1' )( MP_1 )
+            conv_2 = Conv2D( filters = 128, kernel_size = 4, strides = 2, padding = 'valid', name = 'Conv_2' )( PD_1 )
+            MP_2 = MaxPooling2D( pool_size = 4, strides = 1, name = 'Maxpool_2' )( conv_2 )
+            Padding_leayer_2 = ZeroPadding2D( padding = 1, name = 'Padding_leayer_2' )( MP_2 )
+            Conv_3 = Conv2D(
+                    filters = 264, activation = 'relu', kernel_size = 4, strides = 2, padding = 'valid',
+                    name = 'Conv_3'
+                    )( Padding_leayer_2 )
+            Padding_layer_3 = ZeroPadding2D( padding = 1, name = 'Padding_layer_3' )( Conv_3 )
+            Conv_4 = Conv2D(
+                    filters = 128, activation = 'relu', kernel_size = 4, strides = 1, padding = 'valid',
+                    name = 'Conv_4'
+                    )( Padding_layer_3 )
+            Padding_layer_4 = ZeroPadding2D( padding = 1, name = 'Padding_layer_4' )( Conv_4 )
+            Conv_5 = Conv2D(
+                    filters = 128, activation = 'relu', kernel_size = (3, 3), strides = 1, padding = 'valid',
+                    name = 'Conv_5'
+                    )( Padding_layer_4 )
+            Maxpool_3 = MaxPooling2D( pool_size = 4, strides = 1, name = 'Maxpool_3' )( Conv_5 )
+            dp = Dropout( 0.5 )( Maxpool_3 )
+            ft = Flatten( )( dp )
+            FC_1 = Dense( units = 200, name = 'FC_1' )( ft )
+            FC_2 = Dense( units = 1024, name = 'FC_2' )( FC_1 )
+            output = Lambda( lambda x: K.l2_normalize( x, axis = -1 ), name = 'lambda_layer' )( FC_2 )
+            fc = Dense( units = self.config.N_classes, name = "fine_tune_layer" )( output )
+            output = Softmax( )( fc )
+        elif choice == 'cnn':
+            input = Input( self.config.input_shape, name = 'input_layer' )
+            conv_1 = Conv2D(
+                    filters = 48, kernel_size = (10, 4), strides = 1, input_shape = self.config.input_shape,
+                    padding = 'valid',
+                    activation = 'relu', name = 'Conv_1'
+                    )( input )
+            MP_1 = MaxPooling2D( pool_size = 3, strides = 2, name = 'Maxpool_1' )( conv_1 )
+
+            PD_1 = ZeroPadding2D( padding = 2, name = 'Padding_layer_1' )( MP_1 )
+            conv_2 = Conv2D( filters = 128, kernel_size = 4, strides = 2, padding = 'valid', name = 'Conv_2' )( PD_1 )
+            MP_2 = MaxPooling2D( pool_size = 4, strides = 1, name = 'Maxpool_2' )( conv_2 )
+            Padding_leayer_2 = ZeroPadding2D( padding = 1, name = 'Padding_leayer_2' )( MP_2 )
+            Conv_3 = Conv2D(
+                    filters = 264, activation = 'relu', kernel_size = 4, strides = 2, padding = 'valid',
+                    name = 'Conv_3'
+                    )( Padding_leayer_2 )
+            ft = Flatten( )( Conv_3 )
+            FC_1 = Dense( units = 200, name = 'FC_1' )( ft )
+            FC_2 = Dense( units = 1024, name = 'FC_2' )( FC_1 )
+            l2 = Lambda( lambda x: K.l2_normalize( x, axis = -1 ), name = 'lambda_layer' )( FC_2 )
+            fc = Dense( units = self.config.N_classes, name = "fine_tune_layer" )( l2 )
+            output = Softmax( )( fc )
+        # elif choice == 'lstm':
+        #     input = Input( self.config.input_shape, name = 'input_layer' )
+        #
+        #     x = LSTM( 256, return_sequences = True )( input )
+        #     x = LSTM( 256, return_sequences = True )( x )
+        #     x = MaxPooling2D( pool_size = 2, strides = 1, name = 'Maxpool_2' )( x )
+        #     output = Dense( self.config.N_classes, activation = "softmax" )( x )
+
+            # model = Model( inputs = inputs, outputs = outputs )
+        elif choice == 'cnnlstm':
+            input = Input( self.config.input_shape, name = 'input_layer' )
+            conv_1 = Conv2D(
+                    filters = 48, kernel_size = (10, 4), strides = 1, input_shape = self.config.input_shape,
+                    padding = 'valid',
+                    activation = 'relu', name = 'Conv_1'
+                    )( input )
+            MP_1 = MaxPooling2D( pool_size = 3, strides = 2, name = 'Maxpool_1' )( conv_1 )
+            PD_1 = ZeroPadding2D( padding = 2, name = 'Padding_layer_1' )( MP_1 )
+            conv_2 = Conv2D( filters = 128, kernel_size = 4, strides = 2, padding = 'valid', name = 'Conv_2' )( PD_1 )
+            MP_2 = MaxPooling2D( pool_size = 4, strides = 1, name = 'Maxpool_2' )( conv_2 )
+            hidden = tf.keras.layers.Reshape( (-1, 128) )( MP_2 )
+            # f = Flatten()(MP_2)
+            # td = TimeDistributed( MP_2 )( input )
+            lstm1 = LSTM( 64, return_sequences = True)( hidden )
+            lstm2 = LSTM( 96, return_sequences = True )( lstm1 )
+            f = Flatten( )( lstm2 )
+            FC_1 = Dense( units = 200, name = 'FC_1' )( f )
+            FC_2 = Dense( units = self.config.N_classes, name = 'FC_2' )( FC_1 )
+            output = Softmax( )( FC_2 )
+        elif choice == 'densenet121':
+            model_d = tf.keras.applications.DenseNet121(
+                    weights = None, include_top = False, input_shape = self.config.input_shape
+                    )
+            input = model_d.input
+
+
+            x = model_d.output
+
+            x = GlobalAveragePooling2D( )( x )
+            x = BatchNormalization( )( x )
+            x = Dropout( 0.5 )( x )
+            x = Dense( 1024, activation = 'relu' )( x )
+            # x = Dense( 512, activation = 'relu' )( x )
+            x = BatchNormalization( )( x )
+            x = Dropout( 0.5 )( x )
+
+            output = Dense( self.config.N_classes, activation = 'softmax' )( x )
+        elif choice == 'densenet169':
+            model_d = tf.keras.applications.DenseNet169(
+                    weights = None, include_top = False, input_shape = self.config.input_shape
+                    )
+            input = model_d.input
+
+
+            x = model_d.output
+
+            x = GlobalAveragePooling2D( )( x )
+            x = BatchNormalization( )( x )
+            x = Dropout( 0.5 )( x )
+            x = Dense( 1024, activation = 'relu' )( x )
+            # x = Dense( 512, activation = 'relu' )( x )
+            x = BatchNormalization( )( x )
+            x = Dropout( 0.5 )( x )
+
+            output = Dense( self.config.N_classes, activation = 'softmax' )( x )
+        elif choice == 'vgg16':
+            model_d = tf.keras.applications.vgg16.VGG16(
+                    weights = None, include_top = False, input_shape = (200, 60, 3)
+                    )
+            input = model_d.input
+            x = model_d.output
+            x = GlobalAveragePooling2D( )( x )
+            x = BatchNormalization( )( x )
+            x = Dropout( 0.5 )( x )
+            x = Dense( 1024, activation = 'relu' )( x )
+            # x = Dense( 512, activation = 'relu' )( x )
+            x = BatchNormalization( )( x )
+            x = Dropout( 0.5 )( x )
+            output = Dense( self.config.N_classes, activation = 'softmax' )( x )
+        elif choice == 'vgg19':
+            model_d = tf.keras.applications.vgg19.VGG19(
+                    weights = None, include_top = False, input_shape = (200, 60, 3)
+                    )
+            input = model_d.input
+            x = model_d.output
+            x = GlobalAveragePooling2D( )( x )
+            x = BatchNormalization( )( x )
+            x = Dropout( 0.5 )( x )
+            x = Dense( 1024, activation = 'relu' )( x )
+            # x = Dense( 512, activation = 'relu' )( x )
+            x = BatchNormalization( )( x )
+            x = Dropout( 0.5 )( x )
+            output = Dense( self.config.N_classes, activation = 'softmax' )( x )
+        elif choice == 'vgg13':
+
+            # define model input
+            input = Input( shape = self.config.input_shape)
+            # add vgg module
+            model = self.vgg_block( input, 64, 2 )
+            model = self.vgg_block( model, 128, 2 )
+            model = self.vgg_block( model, 256, 3 )
+            model = self.vgg_block( model, 512, 3 )
+
+
+
+            x = GlobalAveragePooling2D( )( model )
+            x = BatchNormalization( )( x )
+            x = Dropout( 0.5 )( x )
+            x = Dense( 1024, activation = 'relu' )( x )
+            # x = Dense( 512, activation = 'relu' )( x )
+            x = BatchNormalization( )( x )
+            x = Dropout( 0.5 )( x )
+            output = Dense( self.config.N_classes, activation = 'softmax' )( x )
+        elif choice == 'vgg10':
+
+            # define model input
+            input = Input( shape = self.config.input_shape)
+            # add vgg module
+            model = self.vgg_block( input, 64, 2 )
+            model = self.vgg_block( model, 128, 2 )
+            model = self.vgg_block( model, 256, 3 )
+
+
+
+
+            x = GlobalAveragePooling2D( )( model )
+            x = BatchNormalization( )( x )
+            x = Dropout( 0.5 )( x )
+            x = Dense( 1024, activation = 'relu' )( x )
+            # x = Dense( 512, activation = 'relu' )( x )
+            x = BatchNormalization( )( x )
+            x = Dropout( 0.5 )( x )
+            output = Dense( self.config.N_classes, activation = 'softmax' )( x )
+        elif choice == 'vgg8':
+
+            # define model input
+            input = Input( shape = self.config.input_shape)
+            # add vgg module
+            model = self.vgg_block( input, 64, 2 )
+
+            model = self.vgg_block( model, 256, 3 )
+
+
+
+            x = GlobalAveragePooling2D( )( model )
+            x = BatchNormalization( )( x )
+            x = Dropout( 0.5 )( x )
+            x = Dense( 1024, activation = 'relu' )( x )
+            # x = Dense( 512, activation = 'relu' )( x )
+            x = BatchNormalization( )( x )
+            x = Dropout( 0.5 )( x )
+            output = Dense( self.config.N_classes, activation = 'softmax' )( x )
+        elif choice == 'vgg5':
+
+            # define model input
+            input = Input( shape = self.config.input_shape)
+            # add vgg module
+            model = self.vgg_block( input, 256, 3 )
+
+
+            # x = model.output
+            x = GlobalAveragePooling2D( )( model )
+            x = BatchNormalization( )( x )
+            x = Dropout( 0.5 )( x )
+            x = Dense( 1024, activation = 'relu' )( x )
+            # x = Dense( 512, activation = 'relu' )( x )
+            x = BatchNormalization( )( x )
+            x = Dropout( 0.5 )( x )
+            output = Dense( self.config.N_classes, activation = 'softmax' )( x )
+
+
+        elif choice == 'resnet':
+            input = Input( self.config.input_shape, name = 'input_layer' )
+            x = tf.keras.layers.Conv2D( 64, 5, activation = 'relu', padding = 'same' )( input )
+
+            x = tf.keras.layers.MaxPooling2D( pool_size = (2, 2) )( x )
+
+            x = self.resblock( x, 3, 64 )
+            x = self.resblock( x, 3, 64 )
+            # x = resblock(x, 3, 128)
+
+            x = self.resblock( x, 3, 128, first_layer = True )
+            x = self.resblock( x, 3, 128 )
+            x = Flatten( )( x )
+            x = Dense( units = 200, name = 'FC_1' )( x )
+            x = Dense( units = 1024, name = 'FC_2' )( x )
+            x = Lambda( lambda x: K.l2_normalize( x, axis = -1 ), name = 'lambda_layer' )( x )
+            x = Dense( units = self.config.N_classes, name = "fine_tune_layer" )( x )
+            output = Softmax( )( x )
+        elif choice == 'resnet6':
+            input = Input( self.config.input_shape, name = 'input_layer' )
+            x = tf.keras.layers.Conv2D( 64, 5, activation = 'relu', padding = 'same' )( input )
+
+            x = tf.keras.layers.MaxPooling2D( pool_size = (2, 2) )( x )
+
+            x = self.resblock( x, 3, 64 )
+            x = self.resblock( x, 3, 64 )
+            # x = resblock(x, 3, 128)
+
+            x = self.resblock( x, 3, 128, first_layer = True  )
+            x = self.resblock( x, 3, 128 )
+
+            x = self.resblock( x, 3, 128, first_layer = True  )
+            x = self.resblock( x, 3, 128 )
+
+
+            x = self.resblock( x, 3, 128, first_layer = True )
+            x = self.resblock( x, 3, 128 )
+            x = Flatten( )( x )
+            x = Dense( units = 200, name = 'FC_1' )( x )
+            x = Dense( units = 1024, name = 'FC_2' )( x )
+            x = Lambda( lambda x: K.l2_normalize( x, axis = -1 ), name = 'lambda_layer' )( x )
+            x = Dense( units = self.config.N_classes, name = "fine_tune_layer" )( x )
+            output = Softmax( )( x )
+        elif choice == 'resnet10':
+            input = Input( self.config.input_shape, name = 'input_layer' )
+            x = tf.keras.layers.Conv2D( 64, 5, activation = 'relu', padding = 'same' )( input )
+
+            x = tf.keras.layers.MaxPooling2D( pool_size = (2, 2) )( x )
+
+            x = self.resblock( x, 3, 64 )
+            x = self.resblock( x, 3, 64 )
+            # x = resblock(x, 3, 128)
+
+            x = self.resblock( x, 3, 128, first_layer = True  )
+            x = self.resblock( x, 3, 128 )
+
+            x = self.resblock( x, 3, 128, first_layer = True  )
+            x = self.resblock( x, 3, 128 )
+
+            x = self.resblock( x, 3, 128, first_layer = True  )
+            x = self.resblock( x, 3, 128 )
+
+
+            x = self.resblock( x, 3, 128, first_layer = True )
+            x = self.resblock( x, 3, 128 )
+            x = Flatten( )( x )
+            x = Dense( units = 200, name = 'FC_1' )( x )
+            x = Dense( units = 1024, name = 'FC_2' )( x )
+            x = Lambda( lambda x: K.l2_normalize( x, axis = -1 ), name = 'lambda_layer' )( x )
+            x = Dense( units = self.config.N_classes, name = "fine_tune_layer" )( x )
+            output = Softmax( )( x )
+        elif choice == 'resnet12':
+            input = Input( self.config.input_shape, name = 'input_layer' )
+            x = tf.keras.layers.Conv2D( 64, 5, activation = 'relu', padding = 'same' )( input )
+
+            x = tf.keras.layers.MaxPooling2D( pool_size = (2, 2) )( x )
+
+            x = self.resblock( x, 3, 64 )
+            x = self.resblock( x, 3, 64 )
+            # x = resblock(x, 3, 128)
+
+            x = self.resblock( x, 3, 128, first_layer = True  )
+            x = self.resblock( x, 3, 128 )
+
+            x = self.resblock( x, 3, 128, first_layer = True  )
+            x = self.resblock( x, 3, 128 )
+
+            x = self.resblock( x, 3, 128, first_layer = True  )
+            x = self.resblock( x, 3, 128 )
+
+            x = self.resblock( x, 3, 128, first_layer = True  )
+            x = self.resblock( x, 3, 128 )
+
+
+            x = self.resblock( x, 3, 128, first_layer = True )
+            x = self.resblock( x, 3, 128 )
+            x = Flatten( )( x )
+            x = Dense( units = 200, name = 'FC_1' )( x )
+            x = Dense( units = 1024, name = 'FC_2' )( x )
+            x = Lambda( lambda x: K.l2_normalize( x, axis = -1 ), name = 'lambda_layer' )( x )
+            x = Dense( units = self.config.N_classes, name = "fine_tune_layer" )( x )
+            output = Softmax( )( x )
         Net = Model( inputs=input, outputs=output )
         return Net
+
+    def vgg_block(self, layer_in, n_filters , n_conv ):
+        # add convolutional layers
+        for _ in range( n_conv ):
+            layer_in = Conv2D( n_filters, (3, 3), padding = 'same', activation = 'relu' )( layer_in )
+        # add max pooling layer
+        layer_in = MaxPooling2D( (2, 2), strides = (2, 2) )( layer_in )
+        return layer_in
+    def resblock( self, x, kernelsize, filters, first_layer = False ):
+
+        if first_layer:
+            fx = tf.keras.layers.Conv2D( filters, kernelsize, padding = 'same' )( x )
+            # fx = layers.BatchNormalization()(fx)
+            fx = tf.keras.layers.ReLU( )( fx )
+
+            fx = tf.keras.layers.Conv2D( filters, kernelsize, padding = 'same' )( fx )
+            # fx = layers.BatchNormalization()(fx)
+
+            x = tf.keras.layers.Conv2D( filters, 1, padding = 'same' )( x )
+
+            # out = tf.keras.layers.Add( )( [ x, fx ] )
+            # out = tf.keras.layers.ReLU( )( out )
+        else:
+            fx = tf.keras.layers.Conv2D( filters, kernelsize, padding = 'same' )( x )
+            # fx = layers.BatchNormalization()(fx)
+            fx = tf.keras.layers.ReLU( )( fx )
+
+            fx = tf.keras.layers.Conv2D( filters, kernelsize, padding = 'same' )( fx )
+            # fx = layers.BatchNormalization()(fx)
+            #
+        out = tf.keras.layers.Add( )( [ x, fx ] )
+        out = tf.keras.layers.ReLU( )( out )
+
+        return out
 def generatePerturbData(psr,data,current_label,pretrained_model,t_label,method:str = 'fgsm'):
     '''One sample at a time'''
 
     if method == 'fgsm':
         perturbation = generateAdvExsFGSM( data, current_label, pretrained_model, t_label = t_label )
+        perturbation, data = np.squeeze( perturbation ), np.squeeze( data )
+        eps = np.sqrt( psr / np.mean( np.var( perturbation ) / np.var( data ) ) )
+        delta = perturbation.clip( -eps, eps )
     elif method == 'pgd':
-        perturbation = generateAdvExsPGD( data, current_label, pretrained_model,alpha = psr, n_iter=20)
-    perturbation, data = np.squeeze( perturbation ), np.squeeze( data )
-    eps = np.sqrt( psr / np.mean( np.var( perturbation ) / np.var( data ) ) )
-    delta = perturbation.clip(-eps,eps)
+        perturbation = generateAdvExsPGD( data, current_label, pretrained_model,alpha = 1e4, n_iter=20)
+        delta = scaleDeepfool( psr = psr, test_data = data, perturbation = np.asarray(perturbation))
+        delta, data = np.squeeze( delta ), np.squeeze( data )
+
+
     adv_data = data + delta
     return np.expand_dims( adv_data, axis = 0 ), np.expand_dims( delta, axis = 0 )
-
 def generateAdvExsFGSM(input_CSI, label, pretrained_model, t_label: int = None):
     '''
     Create adversarial pattern for single input
@@ -164,25 +604,36 @@ def generateAdvExsPGD(input_CSI, labels, pretrained_model,alpha = 1e4,n_iter:int
             prediction = pretrained_model( model_input )
             loss = loss_object( labels, prediction )
         gradient = gradient + (alpha/(i+1))*tf.sign(tape.gradient( loss, model_input ))
-    return gradient
+    return np.asarray(gradient)
 def runTrain(config, dataset_name):
     m_callback = myCallback()
     # name = 'widar'
+
     config.train_data, config.test_data, config.train_label, config.test_label = gestureDataLoader.getData(config, dataset_name)
     # test_data = procOBJ.scale( config.test_data, config.D_range )
     # train_data = procOBJ.scale( config.train_data, config.D_range )
-    test_data = procOBJ.scale(config.test_data,config.D_range)
-    train_data = procOBJ.scale(config.train_data,config.D_range)
+    test_data = config.test_data
+    train_data = config.train_data
     test_label = config.test_label
     train_label = config.train_label
+    if os.path.exists(config.pretrained_model_path):
+        Net = tf.keras.models.load_model( config.pretrained_model_path )
+        print('=========================================================')
+        print(f'loading pretrained model {config.pretrained_model_path} to continue training...')
+        print('=========================================================')
+        # raise Exception(f'The model {config.pretrained_model_path} is already exists')
+    else:
+        net = AlexNetTF( config )
+        Net = net.buildModel( choice = config.DNN_name)
     print(f'Data range from {test_data.min():.2f} to {test_data.max():.2f} \nwith model {config.pretrained_model_path}')
-    net = AlexNetTF( config )
-    Net = net.buildModel( )
+
+
+
     lrScheduler = ReduceLROnPlateau(
             monitor='val_loss', factor=0.1,
-            patience=30,
+            patience=15,
     )
-    earlyStop = tf.keras.callbacks.EarlyStopping( monitor='val_acc', patience=40, restore_best_weights=True )
+    earlyStop = tf.keras.callbacks.EarlyStopping( monitor='val_acc', patience=35, restore_best_weights=True )
 
     optimizer = tf.keras.optimizers.Adamax(
             learning_rate=config.lr, beta_1=0.95, beta_2=0.99, epsilon=1e-09,
@@ -191,51 +642,32 @@ def runTrain(config, dataset_name):
     # optimizer = tf.keras.optimizers.SGD(learning_rate=config.lr)
     # optimizer = tf.keras.optimizers.Adam(learning_rate = config.lr)
     Net.compile( loss='categorical_crossentropy', optimizer=optimizer, metrics='acc' )
-    Net.summary( )
+    # Net.summary( )
     history = Net.fit(
             train_data, train_label,
             validation_split=0.05,
             batch_size = config.batch_size,
-            epochs=200,
-            callbacks=[ earlyStop, lrScheduler ],
+            epochs=config.epoch,
+            callbacks=[ m_callback, lrScheduler ],
             shuffle = True,
-            verbose = 1
+            verbose =  1,
+
     )
     Net.evaluate(test_data, test_label)
     Net.save( config.pretrained_model_path )
-
 def runAdvExsTestPSR(input_CSI,labels,pretrained_model,psr,ifpltcmd:bool =False,t_label:int=None,
         attack_method:str='fgsm'):
     '''
-    labels: should be one hot coded
+    labels_pred: should be one hot coded
     '''
-    # method = 'eval'
-    # if method == 'pred':
-    #     print( f'Testing the accuracy of adversarial sampels for PSR = {psr}, using predition method' )
-    #     label_adv_pred_container = []
-    #     for i,data in enumerate(input_CSI):
-    #         data,current_label = np.expand_dims(data,axis=0),np.expand_dims(labels[i],axis=0)
-    #         ori_pred_label = np.argmax(pretrained_model.predict(data),axis = 1)
-    #         if ori_pred_label == np.argmax( current_label, axis=1 ):
-    #             advData = generatePerturbData(
-    #                     psr = psr, data = data, current_label = current_label, pretrained_model =
-    #                     pretrained_model, t_label = t_label,method = 'pgd'
-    #                     )
-    #             if advData is str:
-    #                 print('see a string')
-    #                 continue
-    #             # advData = data + eps*create_adversarial_pattern(data,current_label,pretrained_model,t_label = t_label)
-    #             label_adv_pred_container.append( np.argmax( pretrained_model.predict( advData ), axis = 1 ) )
-    #         else:
-    #             label_adv_pred_container.append(ori_pred_label)
-    #     true_label = np.argmax( labels, axis = 1 )
-    #     label_adv_pred_container = np.squeeze(np.asarray( label_adv_pred_container ))
-    #     accuracy = np.sum( label_adv_pred_container == true_label ) / labels.shape[0 ]
-    # elif method == 'eval':
     advData = [ ]
     perturb = [ ]
     model = Model( inputs = pretrained_model.input, outputs = pretrained_model.layers[ -2 ].output )
-    for i, test_data in enumerate( input_CSI ):
+    if attack_method == 'deepfool':
+        df = loadmat( 'perturbation\\signfi_lab_276_deepfool.mat' )
+        pertEx_all = df[ 'perturbation' ]/50
+        input_CSI = (df[ 'advData' ] - df[ 'perturbation' ])/50
+    for i, test_data in tqdm(enumerate( input_CSI ),desc = f'attack_method:{attack_method}',position = 0):
         # print(f'Generating advData for {i+1} sample')
         test_data, current_label = np.expand_dims( test_data, axis = 0 ), np.expand_dims(
                 labels[ i ], axis = 0
@@ -246,42 +678,57 @@ def runAdvExsTestPSR(input_CSI,labels,pretrained_model,psr,ifpltcmd:bool =False,
                     pretrained_model, t_label = t_label, method = attack_method
                     )
         elif attack_method == 'deepfool':
-            pertEx, _, _, _, advEx = deepfool( test_data, model )
+
+            # print(i)
+            # pertEx, _, _, _, _ = deepfool( test_data, model )
+            pertEx = scaleDeepfool( psr = psr, test_data = test_data, perturbation = pertEx_all[i:i+1,:,:,:] )
+            advEx = test_data + pertEx
+            # pertEx, data = np.squeeze( pertEx ), np.squeeze( test_data )
+        elif attack_method == 'gaussian':
+            # print(i)
+            # pertEx, _, _, _, _ = deepfool( test_data, model )
+            if i == 0:
+                a = np.random.normal(0, 1, input_CSI.shape)
+            pertEx = scaleDeepfool( psr = psr, test_data = test_data, perturbation = a[i:i+1] )
+            advEx = test_data + pertEx - pertEx.mean( )
         perturb.append( pertEx )
         advData.append( advEx )
     perturb = np.concatenate( perturb, axis = 0 )
     advData = np.concatenate( advData, axis = 0 )
     # Choose one perturbation
-    # n_samples = perturb.__len__()
-    # selected_perturb = np.repeat( perturb[ np.random.choice(n_samples,1) ],n_samples, axis = 0)
-    # advData_uni = input_CSI + selected_perturb
     _, accuracy = pretrained_model.evaluate( advData, labels, verbose = 0 )
-    # _, accuracy_2 = pretrained_model.evaluate(advData_uni, labels, verbose = 0 )
+    print( f'The accuracy of adversarial samples for PSR = {psr:.5f} is {accuracy:.6f}' )
+    if 0:
+        n_samples = perturb.__len__()
+        selected_perturb = np.repeat( perturb[ np.random.choice(n_samples,1) ],n_samples, axis = 0)
+        advData_uni = input_CSI + selected_perturb
+
+        _, accuracy_2 = pretrained_model.evaluate(advData_uni, labels, verbose = 0 )
     if ifpltcmd:
         label_pred = np.argmax(pretrained_model.predict( advData ),axis=1)
         label_true = np.argmax(labels,axis=1)
         title = f'PSR: {psr}, Accuracy: {accuracy:.2f}, target: {t_label}'
         plotSig.pltcm( label_test_pred = label_pred, true_label = label_true, title = title )
-    # print(f'The accuracy of adversarial samples for PSR = {psr:.5f} is {accuracy:.6f}')
     # print( f'The accuracy of universal adversarial samples for PSR = {psr:.5f} is {accuracy_2:.2f}' )
+    # a = [accuracy,accuracy_2]
     return accuracy,perturb,advData
 def runAdvExsTestEps(input_CSI,labels,pretrained_model,eps,ifpltcmd:bool =False,t_label:int=None):
     '''
-    labels: should be one hot coded
+    labels_pred: should be one hot coded
     '''
     # print(f'The eps is {eps}')
     # label_adv_pred_container = []
     # for i,data in enumerate(input_CSI):
-    #     data,current_label = np.expand_dims(data,axis=0),np.expand_dims(labels[i],axis=0)
+    #     data,current_label = np.expand_dims(data,axis=0),np.expand_dims(labels_pred[i],axis=0)
     #     ori_pred_label = np.argmax(pretrained_model.predict(data),axis = 1)
     #     if ori_pred_label == np.argmax( current_label, axis=1 ):
     #         advData = data + eps*create_adversarial_pattern(data,current_label,pretrained_model,t_label = t_label)
     #         label_adv_pred_container.append( np.argmax( pretrained_model.predict( advData ), axis = 1 ) )
     #     else:
     #         label_adv_pred_container.append(ori_pred_label)
-    # true_label = np.argmax( labels, axis = 1 )
+    # true_label = np.argmax( labels_pred, axis = 1 )
     # label_adv_pred_container = np.squeeze(np.asarray( label_adv_pred_container ))
-    # accuracy = np.sum( label_adv_pred_container == true_label ) / labels.shape[0 ]
+    # accuracy = np.sum( label_adv_pred_container == true_label ) / labels_pred.shape[0 ]
     advData = [ ]
     for i, test_data in enumerate( input_CSI ):
         test_data, current_label = np.expand_dims( test_data, axis = 0 ), np.expand_dims(
@@ -298,179 +745,149 @@ def runAdvExsTestEps(input_CSI,labels,pretrained_model,eps,ifpltcmd:bool =False,
     print( f'Accuracy for eps = {eps:.3f} is {accuracy:.2f}' )
     return accuracy
 if __name__ == '__main__':
-    config = Config.getconfig( )
-    '''Prepare data'''
-    config.D_range = 1
-    # config.pretrained_model_path = f'SavedModel/signfi_model_lab_276_scale_{config.D_range}' + '.h5'
-    procOBJ = gestureDataLoader.preprocessing()
-    config.train_data, config.test_data, config.train_label, config.test_label = gestureDataLoader.getData(config,'widar')
-    test_data = copy.deepcopy(procOBJ.scale(config.test_data,config.D_range))
-    train_data = copy.deepcopy(procOBJ.scale(config.train_data,config.D_range))
-    test_label = copy.deepcopy(config.test_label)
-    train_label = copy.deepcopy(config.train_label)
-    config.attack_model_Root = 'SavedModel\\Attack_target_model'
+    model_structure_list = ['alex1', 'alex2', 'alex3','cnn', 'vgg8', 'vgg10' ,'defult','vgg16','vgg19','resnet',
+                            'resnet6']
+    model_depth_list = ['resnet','resnet6','resnet10','resnet12']
+    all_model = list(set([*model_structure_list,*model_depth_list]))
+    # ==================================================================================================================
+    if 0:
+        config.train_data, config.test_data, config.train_label, config.test_label = gestureDataLoader.getData(
+                config, 'signfi'
+                )
+        model_dir = os.listdir(config.victim_model_Root)
+        for p in model_dir:
+            if 'widar' in p:
+                continue
+            print( p )
+            model = tf.keras.models.load_model( os.path.join( config.victim_model_Root, p ) )
+            model.evaluate( config.test_data, config.test_label )
+
     '''Run training process'''
-    # runTrain( config = config, dataset_name = 'widar' )
-
-    Attack_model = tf.keras.models.load_model( os.path.join(config.attack_model_Root,
-            'widar_model_loc2_ori123456_scale_1_user_2_envir_2_20181118.h5'))
-    f = Model(Attack_model.input,Attack_model.get_layer('FC_2').output)
-    '''Get UAP'''
-    uni_per_widar = loadmat( os.path.join(config.pert_Mat_Root,
-            'uni_per_widar_model_loc2_ori123456_scale_1_user_2_envir_1_20181109_20181115.mat' ))['universal_perturbation']
-    uni_per_signfi = loadmat(os.path.join(config.pert_Mat_Root, 'signfi_lab_276_universal_perturbation.mat' ) )[ 'universal_perturbation' ]
-    uni_per_widar_in_domain = universal_perturbation(dataset = test_data,f = f,overshoot=0.002)
-    out = {'universal_perturbation': uni_per_widar_in_domain }
-    savemat(os.path.join(config.pert_Mat_Root,
-            'uni_per_widar_model_loc2_ori123456_scale_1_user_2_envir_2_20181118.mat' ),out )
-    '''Cross domain universal perturbation testing'''
-
-    # model = tf.keras.models.load_model( os.path.join(model_path,
-    #         'widar_model_loc2_ori123456_scale_1_user_2_envir_1_20181109_20181115.h5'))
-
-    acc_all = {}
-    name = ['Widar U/P, envir 2','signfi U/P', 'Widar U/P, same envir']
-    for i, perturb in enumerate( [ uni_per_widar, uni_per_signfi, uni_per_widar_in_domain]):
-        acc_all[name[i]] = []
-        v = perturb
-        psr_range = np.arange(0.00,0.055,0.002)
-        print(f'Testing the attack performance of the {name[i]} generated universal perturbation')
-        for psr in psr_range:
-            # Perturbation calibration
-            scale_factor = np.sqrt(psr*test_data.var()*((v.max()-v.min())**2)/v.var())
-            scaled_uni_per = procOBJ.scale(v,scale_factor)
-            adv_data = test_data + np.repeat( scaled_uni_per, test_data.__len__( ), axis = 0 )
-            adapted_adv_data = adv_data - np.abs( np.mean( adv_data ) - np.mean( test_data ) )
-            # Attack_model.evaluate( test_data, test_label )
-            _,acc = Attack_model.evaluate(adapted_adv_data,test_label,verbose = 0)
-            print(f'The PSR is {scaled_uni_per.var()/test_data.var():.4f}, accuracy is {acc:.4f}')
-            acc_all[ name[ i ] ].append(acc)
-    else:
-        for k in range(i+1):
-            plt.plot(psr_range, acc_all[name[k]],label = name[k],marker = 'o',markersize=5)
-        plt.legend()
-        plt.ylabel('Accuracy')
-        plt.xlabel('PSR')
-        plt.grid(alpha = 0.4)
-        plt.show()
-    # def compare_wave():
-    #     v = uni_per_signfi
-    #     psr = 0.01
-    #     scale_factor = np.sqrt( psr * test_data.var( ) * ((v.max( ) - v.min( )) ** 2) / v.var( ) )
-    #     scaled_uni_per = procOBJ.scale( v, scale_factor )
-    #     adv_data = test_data + np.repeat( scaled_uni_per, test_data.__len__( ), axis = 0 )
-    #     adapted_adv_data = adv_data - np.abs( np.mean( adv_data ) - np.mean( test_data ) )
-    #     plt.plot( adapted_adv_data[ 0 ].mean(axis =1).mean(axis=1), label = 'attacked'  )
-    #     plt.plot( test_data[ 0 ].mean(axis =1).mean(axis=1) ,label = 'attack free'   )
-    #     plt.ylabel('Amplitude')
-    #     plt.title('PSR = 0.01')
-    #     plt.legend()
-
-
-    # import h5py
-    # with h5py.File('utils\\perturbationMatFiles\\widar_model_loc2_ori123456_scale_1_user_2_envir_2_20181118.h5','w'
-    #         ) as hdf:
-    #     hdf.create_dataset('universal_perturbation',data = uni_per_widar_in_domain)
+    # config.data_dir = [config.sensingDataset_Root + 'Widar\\' + '20181109',
+    #                    config.sensingDataset_Root + 'Widar\\' + '20181115']
+    # config.D_range = 1
+    # config.location = [1,2,3,4,5,6]
+    # config.orientation = [ 2 ]
+    # for dnn in ['cnnlstm']:
+    #     config.DNN_name = dnn
+    #     runTrain(config,'widar')
+    # config.data_dir = 'E:\\SensingDataset\\WiAR'
+    tree = {
+            'home_276': [ 'vgg8', 'vgg10' ],
+            'lab_276' : [ 'cnn', 'vgg8', 'vgg10' ]
+            }
+    if 0:
+        for envir in tree:
+            config.source = envir
+            dnns = tree[envir]
+            for dnn in tqdm(dnns):
+                print(f'Training the model: {dnn} with source: {config.source}.....')
+                config.DNN_name = dnn
+                runTrain(config,'signfi')
+    # ==================================================================================================================
     '''Evaluation of adversarial samples'''
-    # print(f'The accuracy for universal_perturbation {acc * 100:.2f}%')
-    # _, acc = pretrained_model.evaluate( test_data, test_label, verbose = 0 )
-    # print(f'The accuracy for original model {acc * 100:.2f}%')
-    # for i in range(test_data.__len__()):
-    #     psr = np.var(uni_per_widar[i,:,0,0])/np.var(test_data[i,:,0,0])
-    #     if psr > 0.01:
-    #         print(i)
-    #         plt.plot( adv_data[ i, :, 0, 0 ] )
-    #         plt.plot( test_data[ i, :, 0, 0 ] )
-    #         break
+    if 0:
+        import re
+        import h5py
+        from Experiments import *
+        '''Prepare data'''
+        "for model 1. cnn, 2.cnn-lstm"
 
-    # df = {'perturbation':perturb,
-    #         'advData': advData}
-    # savemat('signfi_lab_276_deepfool.mat',df)
-    # for d_range in [ 5,10,20,30,40, 50,500 ]:
-    #     EPS_ACC[ f'range{d_range}' ] = [ ]
-    #     PSR_ACC[ f'range{d_range}' ] = [ ]
-    #
-    #     pretrained_model = tf.keras.models.load_model( config.pretrained_model_path )
-    #     test_data = procOBJ.scale(config.test_data,d_range)
-    #     test_label = config.test_label
-    #     print( f'The training data range from {test_data.min( )} to {test_data.max( )}' )
-    #     # for eps in np.arange( 0, 0.07, 0.011 ):
-    #     #     # pretrained_model.summary( )
-    #     #     acc = DeepNet.runAdvExsTestEps(
-    #     #             input_CSI = test_data,
-    #     #             labels = test_label,
-    #     #             pretrained_model = pretrained_model,
-    #     #             eps = eps,
-    #     #             t_label = None
-    #     #             )
-    #     #     EPS_ACC[ f'range{d_range}' ].append( acc )
-    #     for psr_val in np.arange( 0,0.009, 0.001 ):
-    #         acc = runAdvExsTestPSR(
-    #                 input_CSI = test_data,
-    #                 labels = test_label,
-    #                 pretrained_model = pretrained_model,
-    #                 psr = psr_val,
-    #                 t_label = None
-    #                 )
-    #         PSR_ACC[ f'range{d_range}' ].append( acc )
-    # PSR_ACC['PSR'] = np.arange( 0,0.009, 0.001 )
-    # savemat('utils/resultsMat/PSR_ACC_signfi.mat',PSR_ACC)
-    # EPS_ACC['eps'] = np.arange( 0, 0.07, 0.011 )
-    # PSR_ACC['PSR'] = np.arange( 0, 0.7, 0.1 )
-    # savemat('utils\\resultsMat\\PSR_ACC_signfi.mat',PSR_ACC)
-    # savemat( 'utils\\resultsMat\\EPS_ACC_signfi.mat', EPS_ACC )
-    # dataset_name = 'widar'
-    # _, config.test_data, _, config.test_label = gestureDataLoader.getData(
-    #         config, dataset_name, ifscale = True
-    #         )
-    # PSR_ACC = {}
-    # procOBJ = gestureDataLoader.preprocessing( )
-    # for flag in ['original','zscore']:
-    #     if flag == 'original':
-    #         config.pretrained_model_path = [ 'SavedModel/widar_model_loc[2]_ori[2]Rx123456',
-    #                                          'SavedModel/widar_model_loc[2]_ori[2]Rx123456_zscore' ]
-    #         pretrained_model = tf.keras.models.load_model( config.pretrained_model_path[ 0 ] )
-    #         test_data = config.test_data
-    #         test_label = config.test_label
-    #         PSR_ACC[ 'original' ] = [ ]
-    #     elif flag == 'zscore':
-    #         config.pretrained_model_path = ['SavedModel/widar_model_loc[2]_ori[2]Rx123456','SavedModel/widar_model_loc[2]_ori[2]Rx123456_zscore']
-    #         pretrained_model = tf.keras.models.load_model( config.pretrained_model_path[1] )
-    #         test_data = procOBJ.norm(config.test_data)
-    #         test_label = config.test_label
-    #         PSR_ACC[ 'zscore' ] = [ ]
-    #
-    #     print( f'The data mean {test_data.mean( )} variance {test_data.var( )}' )
-    #     for psr_val in np.arange( 0, 0.02, 0.002 ):
-    #         # pretrained_model.summary( )
-    #         acc = runAdvExsTestPSR(
-    #                 input_CSI = test_data, labels = test_label, pretrained_model = pretrained_model,
-    #                 psr = psr_val, t_label = None
-    #                 )
-    #         PSR_ACC[ f'{flag}' ].append( acc )
-    # savemat('utils/resultsMat/ori_zscore_var.mat',PSR_ACC)
+        # type_data = 'wiar'
+        # config.data_dir = 'E:\\SensingDataset\\WiAR'
+        # config.data_dir = [ config.sensingDataset_Root + 'Widar\\' + '20181109',
+        #                     config.sensingDataset_Root + 'Widar\\' + '20181115' ]
+        # model_name = os.listdir(path=config.victim_model_Root )
+        # model_name = ['signfi_model_defult_lab_276_scale_1.h5',]
+        tree['lab_276'].append('alex1')
+        tree['lab_276'].append('alex2')
+        tree['lab_276'].append('alex3')
 
-
-
-
-
-    # for d_range in [ 5,10,20,30,40,50,500 ]:
-    #     PSR_ACC[ f'range{d_range}' ] = [ ]
-    #     config.test_data = procOBJ.scale(config.test_data,D_range = d_range)
-    #     print( f'The training data range from {config.test_data.min( )} to {config.test_data.max( )}' )
-    #     config.pretrained_model_path = 'widar_model_loc[2]_ori[2]_scale_' + f'{d_range}' + '.h5'
-    #     pretrained_model = tf.keras.models.load_model( config.pretrained_model_path )
-    #     for psr_val in np.arange( 0, 0.13, 0.02 ):
-    #
-    #         # pretrained_model.summary( )
-    #         acc = DeepNet.runAdvExsTestPSR(
-    #                 input_CSI = config.test_data, labels = config.test_label, pretrained_model = pretrained_model,
-    #                 psr = psr_val, t_label = None
-    #                 )
-    #         PSR_ACC[ f'range{d_range}' ].append( acc )
-    # PSR_ACC[f'eps'] = np.arange( 0, 0.13, 0.02 )
-    # savemat('utils/resultsMat/PSR_ACC_widar1.mat',PSR_ACC)
-    # PSR_ACC['eps'] = np.arange( 0, 0.13, 0.02 )
+        model_name = []
+        for source in tree:
+            for model in tree[source]:
+                st = f'signfi_model_{model}_{source}_scale_1.h5'
+                model_name.append(st)
+        # model_name = ['signfi_model_defult_lab_276_scale_1.h5',
+        #               'signfi_model_defult_home_276_scale_1.h5',
+        #               'signfi_model_vgg16_home_276_scale_1.h5',
+        #               'signfi_model_vgg19_home_276_scale_1.h5',
+        #               'signfi_model_resnet_home_276_scale_1.h5',
+        #               'signfi_model_resnet6_home_276_scale_1.h5']
+        seed_container = [5,6,7,8,9,10]
+        d_type_list = ['signfi',]
+        for type_data in d_type_list:
+            for seed in seed_container:
+                config.set_seed = seed
+                for mn in model_name:
+                    config.DNN_name = mn.split( '_' )[ 2 ]
+                    if type_data not in mn:
+                        continue
+                    if config.DNN_name not in all_model:
+                        continue
+                    if mn not in os.listdir(config.victim_model_Root):
+                        raise Exception(f'The model { mn } is not defined')
+                    if type_data == 'widar':
+                        model_path = os.path.join(config.victim_model_Root,mn )
+                        location_all = re.findall( r'\d+',  mn.split('loc')[1])[0]
+                        config.location = [int(a) for a in location_all]
+                        config.orientation = [2]
+                        config.data_dir = [ config.sensingDataset_Root + 'Widar\\' + '20181109',
+                                            config.sensingDataset_Root + 'Widar\\' + '20181115' ]
+                    elif type_data == 'signfi':
+                        model_path = os.path.join(config.victim_model_Root,mn )
+                        if 'home_276' in mn:
+                            config.source = 'home_276'
+                        elif 'lab_276' in mn:
+                            config.source = 'lab_276'
+                        # else:
+                        #     raise 'wrong'
+                    elif type_data == 'wiar':
+                        model_path = os.path.join( config.victim_model_Root, mn )
+                    print(f'generating UAP for model {mn}')
+                    config.train_data, config.test_data, config.train_label, config.test_label = gestureDataLoader.getData(
+                            config,
+                            type_data
+                            )
+                    test_data = copy.deepcopy( config.test_data )
+                    test_label = copy.deepcopy( config.test_label )
+                    # Attack_model = tf.keras.models.load_model( model_path )
+                    # Attack_model.evaluate(config.train_data, config.train_label)
+                    if model_path == config.pretrained_model_path:
+                        current_UAP = genereate_UAP(dataset = test_data, model_path = config.pretrained_model_path)
+                        per_name = 'UAP_' + mn.split('.')[0]+ f'_seed_{config.set_seed}' + '.h5'
+                        path = os.path.join( config.pert_Mat_Root, per_name )
+                        with h5py.File( path, 'w' ) as hdf:
+                            hdf.create_dataset( 'universal_perturbation', data = current_UAP )
+        # ==================================================================================================================
+        #     acc_fgsm_all = []
+        #     acc_uni_all = []
+        #     config.D_range = 50
+        #     config.attacker_model_Root = 'SavedModel\\PSR'
+        #     model_name = 'signfi_model_lab_276_scale_50.h5'
+        #     model_path = os.path.join(config.attacker_model_Root, model_name)
+        #     Attack_model = tf.keras.models.load_model( model_path )
+        #     config.train_data, config.test_data, config.train_label, config.test_label = gestureDataLoader.getData(
+        #             config,
+        #             'signfi'
+        #             )
+        #     test_data = procOBJ.scale( config.test_data, config.D_range )
+        #     for psr in np.arange(0,0.001,0.0001):
+        #         acc_fgsm, _, _ = DeepNet.runAdvExsTestPSR(
+        #                 input_CSI = test_data,
+        #                 labels_pred = config.test_label,
+        #                 pretrained_model = Attack_model,
+        #                 psr = psr,
+        #                 t_label = None
+        #                 )
+        #         acc_fgsm_all.append(acc_fgsm[0])
+        #         acc_uni_all.append(acc_fgsm[1])
+        #     plt.plot( np.arange(0,0.001,0.0001), acc_fgsm_all, marker = 'o', label = 'Adversarial samples specific to input' )
+        #     plt.plot( np.arange(0,0.001,0.0001), acc_uni_all, marker = 'x',label = 'Adversarial samples not specific to input' )
+        #     plt.ylabel('Accuracy')
+        #     plt.legend()
+        #     plt.xlabel('PSR')
+        #     plt.grid()
 
 
 

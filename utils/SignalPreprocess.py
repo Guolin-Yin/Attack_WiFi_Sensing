@@ -80,22 +80,22 @@ def denoising(data,order,cf_freq, i_plt_subcarrier, plot,t = 2.0):
 
         fig, ((ax1, ax2),(ax3,ax4)) = plt.subplots( 2, 2 )
         # Original signal
-        ax1.plot(x_axis,data[i_plt_subcarrier])
+        ax1.plot( )
         ax1.set_title('Oringinal signal')
         ax1.set_xlabel('Time')
         ax1.set_ylabel('Frequency in [Hz]')
         # Spectrum of original Signal
-        ax2.plot( freq_original[mask], fft_original[mask] )
+        ax2.plot( )
         ax2.set_title( 'Spectrum Oringinal signal' )
         ax2.set_xlabel( 'Frequency' )
         ax2.set_ylabel( 'Amplitude' )
         # Filted signal
-        ax3.plot( x_axis, filtered_signal[i_plt_subcarrier] )
+        ax3.plot( )
         ax3.set_title( 'Denoised Signal' )
         ax3.set_xlabel( 'Time' )
         ax3.set_ylabel( 'Frequency in [Hz]' )
         # Spectrum of Filted Signal
-        ax4.plot( freq_filtered[mask], fft_filtered[mask] )
+        ax4.plot( )
         ax4.set_title( 'Spectrum Filted signal' )
         ax4.set_xlabel( 'Frequency' )
         ax4.set_ylabel( 'Amplitude' )

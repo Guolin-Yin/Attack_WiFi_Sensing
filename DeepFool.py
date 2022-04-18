@@ -3,13 +3,14 @@ from tensorflow.keras.models import Model
 import copy
 import tensorflow as tf
 
-def deepfool(input_CSI, pretrained_model,  overshoot=0.002, max_iter=50,):
+def deepfool(input_CSI, pretrained_model, overshoot=0.002, max_iter=50,):
     '''
     :param input_CSI: Whole dataset (n,input_shape)
     :param pretrained_model: feedforward function
     '''
     model = pretrained_model
     num_classes = pretrained_model.output_shape[1]
+
     image_norm = tf.cast(input_CSI, tf.float32 )
     f_image = model(image_norm).numpy().flatten()
     I = (np.array(f_image)).flatten().argsort()[::-1]
@@ -25,11 +26,12 @@ def deepfool(input_CSI, pretrained_model,  overshoot=0.002, max_iter=50,):
     # fs = model(x)
     k_i = label
     def loss_func(logits, I, k):
-        # return tf.nn.softmax_cross_entropy_with_logits(labels=labels, logits=logits)
+        # return tf.nn.softmax_cross_entropy_with_logits(labels_pred=labels_pred, logits=logits)
         return logits[0, I[k]]
     while k_i == label and loop_i < max_iter:
+        # print(loop_i)
         pert = np.inf
-        one_hot_label_0 = tf.one_hot(label, num_classes)
+        # one_hot_label_0 = tf.one_hot(label, num_classes)
         with tf.GradientTape() as tape:
             tape.watch(x)
             fs = model(x)
@@ -38,7 +40,7 @@ def deepfool(input_CSI, pretrained_model,  overshoot=0.002, max_iter=50,):
         # grad_orig = tape.gradient(fs[0, I[0]], x)
         grad_orig = tape.gradient(loss_value, x)
         for k in range(1, num_classes):
-            one_hot_label_k = tf.one_hot(I[k], num_classes)
+            # one_hot_label_k = tf.one_hot(I[k], num_classes)
             with tf.GradientTape() as tape:
                 tape.watch(x)
                 fs = model(x)
@@ -58,11 +60,8 @@ def deepfool(input_CSI, pretrained_model,  overshoot=0.002, max_iter=50,):
         x = tf.Variable(pert_image)
         fs = model(x)
         k_i = np.argmax(np.array(fs).flatten())
-
         loop_i += 1
-
     r_tot = (1 + overshoot) * r_tot
-
     return r_tot, loop_i, label, k_i, np.asarray(pert_image)
 # def deepfool(image, f, grads, num_classes=10, overshoot=0.02, max_iter=50):
 #

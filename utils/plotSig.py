@@ -29,7 +29,7 @@ class pltConfusionMatrix():
         Arguments
         ---------
         cf:            confusion matrix to be passed in
-        group_names:   List of strings that represent the labels row by row to be shown in each square.
+        group_names:   List of strings that represent the labels_pred row by row to be shown in each square.
         categories:    List of strings containing the categories to be displayed on the x,y axis. Default is 'auto'
         count:         If True, show the raw number in the confusion matrix. Default is True.
         normalize:     If True, show the proportions for each category. Default is True.
@@ -126,8 +126,8 @@ def showSignal(ori_sig,adv_sig,eps):
     nrows = len(adv_sig)
     for i in range(nrows):
         ax = fig.add_subplot(nrows,1,i+1)
-        ax.plot( ori_sig, label = 'original signal' )
-        ax.plot( adv_sig[ i ], label = 'adversarial signal' )
+        ax.plot( label='original signal' )
+        ax.plot( label='adversarial signal' )
         # ax.set_xlabel('Time',fontsize=12)
         ax.set_ylabel( 'Amplitude',fontsize=12 )
         # answer = round( eps[ i ], 2 )
@@ -144,10 +144,10 @@ def pltAttackPerform(info,label,title):
     for i, v in enumerate(info):
         eps, acc = zip(*list(v))
         if label[i] == 'Nontargeted':
-            ax.plot(np.asarray(eps),np.asarray(acc),label = label[i],marker = 'o')
+            ax.plot( label=label[ i ], marker='o' )
             print(i)
         else:
-            ax.plot( np.asarray(eps),np.asarray(acc), label = label[ i ] ,marker = 'o')
+            ax.plot( label=label[ i ], marker='o' )
         ax.set_xlabel('EPS',fontsize=17)
         ax.set_ylabel('Accuracy',fontsize=17)
         plt.title(title)
@@ -223,7 +223,7 @@ def nonTargeted():
                                                     ],
             title = None)
 def targeted():
-    results = loadmat("resultsMat\\targeted-acc.mat")
+    results = loadmat( "../resultsMat\\targeted-acc.mat" )
     eps = np.squeeze(results['eps'])
     widar_target1 = np.squeeze(results['Targeted1'])
     widar_target2 = np.squeeze(results[ 'Targeted2' ])
@@ -382,5 +382,4 @@ def zeroPerform():
     pltAttackPerform(info = [ori,z],label = ['original','zscore'],
             title = None)
 if __name__ == '__main__':
-    # EPSPerform()
-    EPSPerform()
+    targeted()

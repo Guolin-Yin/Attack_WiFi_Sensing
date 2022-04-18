@@ -41,13 +41,13 @@ def visualize_scatter_domain( data_2d, label_ids, perplexity,n_iter,figsize = (1
 			{
 					't-SNE_1'    : data_2d[ :, 0 ],
 					't-SNE_2'    : data_2d[ :, 1 ],
-					'labels': domain_labels
+					'labels_pred': domain_labels
 					}
 			)
 	sns.scatterplot(
 			x = "t-SNE_1", y = "t-SNE_2",
-			hue = "labels",
-			style = 'labels',
+			hue = "labels_pred",
+			style = 'labels_pred',
 			data = tsne_df
 			)
 	plt.legend( loc = 'best' )

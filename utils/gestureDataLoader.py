@@ -8,6 +8,8 @@ from tensorflow.keras.utils import to_categorical
 from sklearn.model_selection import train_test_split
 from scipy import stats
 import time
+import re
+from tqdm import tqdm
 class preprocessing:
     def __init__( self ):
         pass
@@ -55,7 +57,7 @@ class signDataLoader:
         data = [ ]
         label = [ ]
         self.filename = os.listdir( self.config.data_dir )
-        if source == 'home':
+        if source == 'home_276':
             name_of_loading = 'dataset_home_276.mat'
         elif source == 'lab_276':
             name_of_loading = 'dataset_lab_276_dl.mat'
@@ -93,9 +95,15 @@ class widarDataLoader:
         data = [ ]
         label = [ ]
         start = time.time()
-        for path in self.config.data_dir:
+        print(
+                f'loading directory {self.config.data_dir} \n '
+                f'locations:{self.config.location} '
+                f'orientations: {self.config.orientation} '
+                f'receivers: {self.config.receiver}'
+                )
+        for path in tqdm(self.config.data_dir,desc = 'Loading widar dataset: '):
             for data_root, data_dirs, data_files in os.walk( path ):
-                print( f'loading directory {data_root} \n locations:{self.config.location} orientations: {self.config.orientation} receivers: {self.config.receiver}' )
+
                 for data_file_name in data_files:
                     file_path = os.path.join( data_root, data_file_name )
                     try:
@@ -131,6 +139,37 @@ class widarDataLoader:
         end = time.time( )
         print(f'Time cost: {end-start:.2f}')
         return X_train, X_test, y_train, y_test
+class wiarDataloader:
+    def __init__(self,config):
+        self.config = config
+    def loadData( self ):
+        data = []
+        label= []
+        # for path in tqdm(self.config.data_dir,desc = 'Loading widar dataset: '):
+        for data_root, data_dirs, data_files in os.walk( self.config.data_dir ):
+            for data_file_name in data_files:
+                try:
+                    file_path = os.path.join( data_root, data_file_name )
+                    data_amp = sio.loadmat( file_path )[ 'csiAmplitude' ]
+                    data_phase = sio.loadmat( file_path )[ 'csiPhase' ]
+                    data_buf = np.concatenate( (data_amp, data_phase), axis = 1 )
+                    data.append( data_buf )
+                    label.append( int( re.findall( r'\d+', data_file_name )[ 0 ] ) )
+                except Exception as e:
+                    print( e )
+                    print(f'error occurred: {data_file_name}')
+                    continue
+        data = np.asarray(data)
+        label = np.expand_dims( label, axis = 1 )
+
+        self.config.N_classes = int( np.max( label ) )
+        self.config.input_shape = data.shape[ 1: ]
+        label = to_categorical( label - 1, num_classes = self.config.N_classes )
+        X_train, X_test, y_train, y_test = train_test_split( data, label, random_state = self.config.set_seed,
+                test_size =
+        0.2 )
+
+        return [X_train, X_test, y_train, y_test]
 class BVPDataLoader:
     def __init__(self,config):
         self.T_MAX = 0
@@ -172,16 +211,11 @@ class BVPDataLoader:
                     # Select Motion
                     if (label_1 not in motion_sel):
                         continue
-                    # if location not in l:
-                    #     continue
-                    # if orientation not in o:
-                    #     continue
-                    # Select Location
-                    # if (location not in [1,2,3,5]):
-                    #     continue
+                    if (location not in [1,2,3,5]):
+                        continue
                     # Select Orientation
-                    # if (orientation not in [1,2,4,5]):
-                    #     continue
+                    if (orientation not in [1,2,4,5]):
+                        continue
                     # Normalization
                     data_normed_1 = self.normalize_data( data_1 )
                     # Update T_MAX
@@ -208,50 +242,68 @@ class BVPDataLoader:
                 )
         # data(ndarray): [N,T_MAX,20,20,1], label(ndarray): [N,N_MOTION]
         return [data_train, data_test, label_train, label_test]
-def getData(config, dataset_name:str,):
-    # procObj = preprocessing()
+def getData(config, dataset_name:str,ifzscore = False,ifscale = True):
+    procObj = preprocessing()
     if dataset_name == 'widar':
-        # config.data_dir = [ 'E:\\SensingDataset\\Widar\\20181109',
-        #                     'E:\\SensingDataset\\Widar\\20181115' ]
-        if config.data_dir is not None:
-            print(f'loading default data dir {config.data_dir}')
-            config.data_dir = [
-                                'E:\\SensingDataset\\Widar\\20181118\\user2'
-                    ]
-        config.receiver = [
-                'r1',
-                'r2',
-                'r3',
-                'r4', 'r5', 'r6'
-                ]
-        config.location = [ 2 ]
-        config.orientation = [ 1,2,3,4,5,6 ]
+
+        if config.data_dir is None:
+            config.data_dir = [ 'E:\\SensingDataset\\Widar\\20181109',
+                                'E:\\SensingDataset\\Widar\\20181115' ]
+            # config.data_dir = [
+            #                     'E:\\SensingDataset\\Widar\\20181118\\user2'
+            #         ]
+            print( f'loading default data dir {config.data_dir}' )
+        if config.receiver is None:
+            print(f'Loading default receiver {config.receiver}')
+            config.receiver = ['r1','r2','r3','r4', 'r5', 'r6']
+        if config.location is None:
+            print( f'Loading default location {config.location}' )
+            config.location = [ 2 ]
+        if config.orientation is None:
+            print(f'loading default orientation {config.orientation}')
+            config.orientation = [ 1,2,3,4,5,6 ]
         load_widar_obj = widarDataLoader( config )
         X_train, X_test, y_train, y_test = load_widar_obj.loadData(
                 motion_sel = [ 1, 2, 3, 4, 5, 6 ],
                 )
-        config.pretrained_model_path = 'SavedModel\\'+ dataset_name + '_model_' + f'loc123456_' + \
-                                       f'ori123456' \
-                                       +f'_scale_{config.D_range}_user_2_envir_2'+'.h5'#+ f'Rx{config.receiver}'
+        loc = ''.join(str(l) for l in config.location)
+        ori = ''.join( str( o ) for o in config.orientation )
+        rx_idx = ''.join( ee for ee in re.findall( r'\d+', ''.join( str( rr ) for rr in config.receiver ) ) )
+        config.pretrained_model_path = config.victim_model_Root + '\\' + \
+                                       dataset_name + f'_model_{config.DNN_name}_' + \
+                                       f'loc{loc}_' + f'ori{ori}_Rx{rx_idx}' \
+                                       +f'_scale_{config.D_range}_user_2_envir_1' +'.h5'
     elif dataset_name =='signfi':
         # config.data_dir = '/Users/guolinyin/Library/Mobile Documents/com~apple~CloudDocs/PhD Research Files/Dataset/SignFi/Dataset'
         config.data_dir = 'E:\SensingDataset\SignFi\Dataset'
-        config.source = 'lab_276'
+        # config.data_dir = 'C:\\Users\\colinyin\\Desktop\\SignFi\\Dataset'
+        # config.data_dir = '/Users/guolinyin/Google 云端硬盘/Colab Notebooks/SensingDataset/SignFi/Dataset'
+        # config.source = 'lab_276'
         signFiLoader = signDataLoader( config=config )
         X_train, X_test, y_train, y_test = signFiLoader.loadData( )
-        config.pretrained_model_path = 'SavedModel\\' + dataset_name + '_model_' + f'{config.source}'+f'_scale_{config.D_range}' +'.h5'
+        config.pretrained_model_path = config.victim_model_Root + '\\' + \
+                                       dataset_name + f'_model_{config.DNN_name}_' + \
+                                       f'{config.source}' +\
+                                       f'_scale_{config.D_range}' +'.h5'
     elif dataset_name == 'BVP':
         '''test BVP loader'''
-        config.data_dir = 'E:\SensingDataset\BVP_attack'
+        config.data_dir = 'E:\\SensingDataset\\BVP_attack'
         BVP_Obj = BVPDataLoader( config )
         X_train, X_test, y_train, y_test = BVP_Obj.loadData( )
-    # if ifzscore:
-    #     return [procObj.norm(X_train), procObj.norm(X_test), y_train, y_test]
-    # elif ifscale:
-    #     return [procObj.scale(X_train,D_range = config.D_range), procObj.scale(X_test,D_range = config.D_range), y_train,
-    #             y_test]
-    # else:
-    return [ X_train ,  X_test , y_train, y_test ]
+    elif dataset_name == 'wiar':
+        config.data_dir = 'E:\\SensingDataset\\WiAR'
+        wiarOBJ = wiarDataloader( config )
+        X_train, X_test, y_train, y_test  = wiarOBJ.loadData( )
+        config.pretrained_model_path = config.victim_model_Root + '\\' + \
+                                       dataset_name + f'_model_{config.DNN_name}_' + \
+                                       f'scale_{config.D_range}' +'numuser_10' +'.h5'
+    if ifzscore:
+        return [procObj.norm(X_train), procObj.norm(X_test), y_train, y_test]
+    elif ifscale:
+        return [procObj.scale(X_train,D_range = config.D_range), procObj.scale(X_test,D_range = config.D_range), y_train,
+                y_test]
+    else:
+        return [ X_train ,  X_test , y_train, y_test ]
 if __name__ == '__main__':
     import sys,os
     current_dir = os.getcwd( )
@@ -260,11 +312,15 @@ if __name__ == '__main__':
     import Config
     config = Config.getconfig()
     '''test widar loader'''
-    config.data_dir = ['E:\\SensingDataset\\Widar\\20181109\\User1',
-                       'E:\\SensingDataset\\Widar\\20181115\\User1' ]
-    load_widar_obj =widarDataLoader(config)
-    X_train, X_test, y_train, y_test = load_widar_obj.loadData(motion_sel = [1,2,3,4,5,6],)
+    # config.data_dir = ['E:\\SensingDataset\\Widar\\20181109\\User1',
+    #                    'E:\\SensingDataset\\Widar\\20181115\\User1' ]
+    # load_widar_obj =widarDataLoader(config)
+    # X_train, X_test, data, y_test = load_widar_obj.loadData(motion_sel = [1,2,3,4,5,6],)
     '''test BVP loader'''
     # config.data_dir = 'E:\SensingDataset\BVP_attack'
     # BVP_Obj = BVPDataLoader(config)
     # data_train, data_test, label_train, label_test = BVP_Obj.loadData()
+    '''Wiar'''
+    config.data_dir = 'E:\\SensingDataset\\WiAR'
+    wiarOBJ = wiarDataloader(config)
+    data = wiarOBJ.loadData()
