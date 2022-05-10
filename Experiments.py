@@ -13,7 +13,7 @@ import Config, SignalPreprocess, gestureDataLoader, DeepNet, plotSig
 from scipy.io import savemat, loadmat
 import matplotlib.pyplot as plt
 from DeepFool import deepfool
-from Universal_pert import universal_perturbation
+from Universal_pert import universal_perturbation,universal_perturbation_PGD
 from matplotlib.lines import Line2D
 import h5py
 from TOOLS import *
@@ -59,7 +59,7 @@ def awgn_samples_test(Attack_model,test_data,test_label,psr):
 	noisy_data = test_data+noise
 	_, acc = Attack_model.evaluate( noisy_data, test_label, verbose = 0 )
 	return acc
-def genereate_UAP(dataset,model_path):
+def genereate_UAP(dataset,model_path,config,method = 'deepfool',labels = None,psr = None):
 	'''
 	:param dataset: the dataset to loop over
 	:param model_path: the attack model path
@@ -67,20 +67,27 @@ def genereate_UAP(dataset,model_path):
 	'''
 	victim_model = tf.keras.models.load_model(model_path )
 
-	if 'vgg' in model_path:
-		victim_model.layers[ -1 ].activation = None
-		f = tf.keras.Model( victim_model.input, victim_model.layers[ -1 ].output )
-	elif 'densenet' in model_path:
-		victim_model.layers[ -1 ].activation = None
-		f = tf.keras.Model( victim_model.input, victim_model.layers[ -1 ].output )
-	else:
-		f = tf.keras.Model( victim_model.input, victim_model.layers[ -2 ].output )
-	if f.output_shape[1] != config.N_classes:
-		raise Exception( f'The output of the feed forward function is wrong, the output should be {config.N-classes}, but it is {f.output_shape[1]}' )
-	if f.layers[-1].activation != None:
-		print(f'The last layer activation function has not been close for model {model_path}')
-		f.layers[ -1 ].activation = None
-	UAP = universal_perturbation( dataset = dataset, f = f, overshoot = 0.002 )
+
+	if method == 'deepfool':
+		if 'vgg' in model_path:
+			victim_model.layers[ -1 ].activation = None
+			f = tf.keras.Model( victim_model.input, victim_model.layers[ -1 ].output )
+		elif 'densenet' in model_path:
+			victim_model.layers[ -1 ].activation = None
+			f = tf.keras.Model( victim_model.input, victim_model.layers[ -1 ].output )
+		else:
+			f = tf.keras.Model( victim_model.input, victim_model.layers[ -2 ].output )
+		if f.output_shape[ 1 ] != config.N_classes:
+			raise Exception(
+					f'The output of the feed forward function is wrong, the output should be {config.N_classes}, '
+					f'but it is {f.output_shape[ 1 ]}'
+					)
+		# if f.layers[-1].activation != None:
+		# 	print(f'The last layer activation function has not been close for model {model_path}')
+		# 	f.layers[ -1 ].activation = None
+		UAP = universal_perturbation( dataset = dataset, f = f, overshoot = 0.002 )
+	elif method == 'pgd':
+		UAP = universal_perturbation_PGD(dataset = dataset,labels = labels,f = victim_model,psr = psr)
 	return UAP
 def scaleDeepfool(psr,test_data,perturbation):
 	scale_factor = np.sqrt(
@@ -108,12 +115,22 @@ def simi_pred(trained_model,config,perturbation):
 			adv_pred.__len__( )	) ]
 	acc = np.sum(np.asarray(pred_labels).squeeze() == config.test_label.argmax(axis=1))/config.test_data.__len__( )
 	return acc
-def heatmap(acc_dict,title,vic_model = [ 'resnet6','vgg16', 'vgg19', 'resnet',  ],idx = -1,ifsave = False):
+def heatmap(acc_dict,title,vic_model = ['defult', 'alex1', 'alex2', 'alex3', 'vgg19'],idx = -1,ifsave = False):
 	import numpy as np
 	import matplotlib
 	import matplotlib.pyplot as plt
+	import matplotlib as mpl
 	atk_model = copy.deepcopy( vic_model )
 	atk_model.reverse( )
+	print_name_dict = {
+			'defult': 'Alexnet',
+			'alex1': 'A1',
+			'alex2': 'A2',
+			'alex3': 'A3',
+			'vgg19': 'VGG19'
+			}
+	atk_model_print = [print_name_dict[key] for key in atk_model]
+	vic_model_print = [print_name_dict[key] for key in vic_model]
 	def getAccMatrix( acc_dict, idx, vic_model,atk_model ):
 		# atk_model = copy.deepcopy( vic_model )
 		# atk_model.reverse( )
@@ -143,29 +160,30 @@ def heatmap(acc_dict,title,vic_model = [ 'resnet6','vgg16', 'vgg19', 'resnet',  
 	# atk_model = [ 'cnnlstm', 'cnn', 'alex3', 'alex2', 'alex1', 'default' ]
 	# victim = [ 'default', 'alex1', 'alex2', 'alex3', 'cnn', 'cnnlstm' ]
 
-	# acc = np.round( 1 - np.array( [
+	# accpgd_attack = np.round( 1 - np.array( [
 	# 		[ 0.395, 0.355, 0.551, 0.404, 0.298, 0.098, ],
 	# 		[ 0.812, 0.766, 0.992, 0.687, 0.55, 0.475, ],
 	# 		[ 0.506, 0.4438, 0.669, 0.393, 0.324, 0.21, ],
 	# 		[ 0.364, 0.2857, 0.572, 0.416, 0.375, 0.158, ],
 	# 		[ 0.33, 0.1896, 0.504, 0.424, 0.273, 0.192, ],
 	# 		[ 0.383, 0.274, 0.584, 0.433, 0.332, 0.196, ],] ),2 )
-	acc = np.round(acc_ori-acc,2)
+	acc = np.round((acc_ori-acc)/acc_ori,2)
 	'''Task specific factors'''
 	# target models using default model
 	# atk_model= ['wiar','widar','signfi']
 	# victim= ['signfi','widar','wiar']
-	# acc = np.round(1 - np.array([
+	# accpgd_attack = np.round(1 - np.array([
 	# 		[0.38,0.25,0.329],
 	# 		[0.5765,0.194,0.972],
 	# 		[0.2346,0.42,0.966]
 	# 		]),2)
 	fig, ax = plt.subplots( )
-	im = ax.imshow( acc,cmap = 'magma_r' )
+	im = ax.imshow( acc,cmap = 'magma_r',vmin=0.65, vmax=1 )
+	# im = plt.imshow( acc, cmap = 'magma_r' )
 	# Show all ticks and label them with the respective list entries
-	plt.yticks(  np.arange( len(atk_model ) ),atk_model )
-	plt.xticks(  np.arange( len(vic_model ) ),vic_model )
-	plt.title(title)
+	plt.yticks(  np.arange( len(atk_model ) ),atk_model_print )
+	plt.xticks(  np.arange( len(vic_model ) ),vic_model_print )
+	# plt.title(title)
 	# Rotate the tick labels_pred and set their alignment.
 	plt.setp( ax.get_xticklabels( ), rotation=45, ha="right",
 			  rotation_mode="anchor" )
@@ -173,8 +191,10 @@ def heatmap(acc_dict,title,vic_model = [ 'resnet6','vgg16', 'vgg19', 'resnet',  
 	for i in range( len( vic_model ) ):
 		for j in range( len( atk_model ) ):
 			text = ax.text( j, i, acc[ i, j ],
-							ha="center", va="center", color="g" )
-	fig.colorbar(im)
+							ha="center", va="center", color="white" )
+
+	plt.colorbar(im)
+	# plt.clim( 0, 1 )
 	fig.tight_layout( )
 	plt.show( )
 	if ifsave:
@@ -528,10 +548,10 @@ if __name__ == '__main__':
 	# 			print(file_name)
 	# 		# print('===============================================================================================')
 	# 			t_buffer[file_name] = file_name
-	# 		acc = compare_DNN_difference(**t_buffer)
-	# 		acc.pop('Guassian_noise',None)
-	# 		for key in list(acc.keys()):
-	# 			acc_buf.append(acc[key])
+	# 		accpgd_attack = compare_DNN_difference(**t_buffer)
+	# 		accpgd_attack.pop('Guassian_noise',None)
+	# 		for key in list(accpgd_attack.keys()):
+	# 			acc_buf.append(accpgd_attack[key])
 	# 		acc_all[d_set + '_' + vic_model_name] = np.asarray(acc_buf).mean(axis = 0)
 	# 		savemat(f'acc_{d_set}_{vic_model_name}', mdict = acc_all)
 	'''Compare model factors'''
@@ -580,14 +600,14 @@ if __name__ == '__main__':
 				savemat( mat_Path, old_rec )
 				savemat(perm_name+'.mat',acc)
 
-	acc_all = loadmat( 'architecture_compare.mat',squeeze_me=1 )
+	acc_all = loadmat( 'resultsMat\\architecture_compare.mat',squeeze_me=1 )
 	acc_all.pop('__header__', None)
 	acc_all.pop('__version__', None)
 	acc_all.pop('__globals__', None)
-	heatmap( acc_dict = acc_all, vic_model = ['vgg19','resnet','resnet6','resnet10','resnet12'], idx = -1 )
-	victim_model = tf.keras.models.load_model( config.victim_model_Root + f'\\signfi_model_'
-						                                                 f'{vic_model_name}_lab_276_scale_1.h5' )
-	loss,acc_t = victim_model.evaluate( config.test_data, config.test_label, batch_size = 32, verbose = 0 )
+	# heatmap( acc_dict = acc_all, vic_model = ['vgg19','resnet','resnet6','resnet10','resnet12'], idx = -1 )
+	# victim_model = tf.keras.models.load_model( config.victim_model_Root + f'\\signfi_model_'
+	# 					                                                 f'{vic_model_name}_lab_276_scale_1.h5' )
+	# loss,acc_t = victim_model.evaluate( config.test_data, config.test_label, batch_size = 32, verbose = 0 )
 	# UAP_path ='perturbation\\UAP_signfi_model_resnet_lab_276_scale_1_seed_7.h5'
 	# victim_model = tf.keras.models.load_model( config.victim_model_Root + f'\\signfi_model_'
 	# 					                                                 f'{vic_model_name}_lab_276_scale_1.h5' )
@@ -597,12 +617,12 @@ if __name__ == '__main__':
 	# 	UAP_data = np.asarray( list( f[ a_group_key ] ) )
 	# # scaled_uni_per = scaleDeepfool( psr = psr, test_data = config.test_data, perturbation = UAP_data )
 	# adv_data = config.test_data + UAP_data - UAP_data.mean( )
-	# _, acc = victim_model.evaluate( config.test_data, config.test_label, batch_size = 32, verbose = 0 )
+	# _, accpgd_attack = victim_model.evaluate( config.test_data, config.test_label, batch_size = 32, verbose = 0 )
 
 
 
 	# vic_model_name = 'resnet'
-	# acc = compare_DNN_difference(
+	# accpgd_attack = compare_DNN_difference(
 	# 		victim_model_path = config.victim_model_Root + f'\\signfi_model_'
 	# 		                                               f'{vic_model_name}_lab_276_scale_1.h5',
 	# 		p1 ='UAP_signfi_model_resnet_lab_276_scale_1_seed_7.h5'

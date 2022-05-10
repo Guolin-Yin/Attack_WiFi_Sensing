@@ -3,9 +3,9 @@ import tensorflow as tf
 
 class getconfig:
     def __init__(self,):
-        self.epoch =  100
+        self.epoch =  1000
         self.data_dir = None
-        self.lr = 1e-3
+        self.lr = 1e-4
         self.batch_size = 32
         self.N_classes = None
         self.input_shape = [200,60,3]
@@ -30,7 +30,7 @@ class getconfig:
         self.location = [1,2,3,4,5,6]
         self.receiver = ['r1', 'r2', 'r3','r4','r5', 'r6']
 
-
+        self.n_iter = None
         # if if_Restore_Samp_idx:
         #     self.getSampleIdx()
 

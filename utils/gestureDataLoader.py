@@ -245,7 +245,12 @@ class BVPDataLoader:
 def getData(config, dataset_name:str,ifzscore = False,ifscale = True):
     procObj = preprocessing()
     if dataset_name == 'widar':
-
+        envir = {
+                'E:\\SensingDataset\\Widar\\20181109': 'envir_1',
+                'E:\\SensingDataset\\Widar\\20181115': 'envir_1',
+                '/Users/guolinyin/Google 云端硬盘/Colab Notebooks/SensingDataset/Widar/20181109': 'envir_1',
+                'E:\\SensingDataset\\Widar\\20181118': 'envir_2'
+                }
         if config.data_dir is None:
             config.data_dir = [ 'E:\\SensingDataset\\Widar\\20181109',
                                 'E:\\SensingDataset\\Widar\\20181115' ]
@@ -272,7 +277,7 @@ def getData(config, dataset_name:str,ifzscore = False,ifscale = True):
         config.pretrained_model_path = config.victim_model_Root + '\\' + \
                                        dataset_name + f'_model_{config.DNN_name}_' + \
                                        f'loc{loc}_' + f'ori{ori}_Rx{rx_idx}' \
-                                       +f'_scale_{config.D_range}_user_2_envir_1' +'.h5'
+                                       +f'_scale_{config.D_range}_{envir[config.data_dir[0]]}' +'.h5'
     elif dataset_name =='signfi':
         # config.data_dir = '/Users/guolinyin/Library/Mobile Documents/com~apple~CloudDocs/PhD Research Files/Dataset/SignFi/Dataset'
         config.data_dir = 'E:\SensingDataset\SignFi\Dataset'

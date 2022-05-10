@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import h5py
+from scipy.io import savemat, loadmat
 '''Loading tools'''
 def load_h5(path, keys, mode = 'r'):
 	if mode=='r':
@@ -133,3 +134,15 @@ def plotting_bar_chart(acc_all,psr_idx = 5):
 	id = np.arange( N + 1 )
 	# plt.xticks( id + width / 2, ('alex1','alex2','alex3','cnn','cnnlstm','defult','Guassian noise'))
 	plt.xticks( id + width / 2, net_name )
+
+def save_to_mat(path,**kargs):
+
+	savemat(path,kargs)
+
+def l2_limiter(psr,perturbation,data):
+	per_norm = perturbation / np.linalg.norm( perturbation )
+	delta = (np.sqrt( psr / np.mean( np.mean( per_norm ** 2 ) / np.mean( data ** 2 ) ) )) * (per_norm)
+	return delta
+def filter_file_name(*args, **kwargs):
+	dic = {}
+	return dic

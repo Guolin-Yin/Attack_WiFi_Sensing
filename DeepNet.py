@@ -17,6 +17,9 @@ from tqdm import tqdm
 # import torch.nn.functional as F
 # from torchsummary import summary
 import numpy as np
+import re
+import h5py
+from Experiments import *
 import sys
 import os
 import copy
@@ -28,7 +31,7 @@ from scipy.io import savemat, loadmat
 import matplotlib.pyplot as plt
 from DeepFool import deepfool
 from Universal_pert import universal_perturbation
-from Experiments import scaleDeepfool
+# from Experiments import scaleDeepfool
 gpus = tf.config.experimental.list_physical_devices( 'GPU' )
 if gpus:
     try:
@@ -548,18 +551,27 @@ class AlexNetTF:
         out = tf.keras.layers.ReLU( )( out )
 
         return out
-def generatePerturbData(psr,data,current_label,pretrained_model,t_label,method:str = 'fgsm'):
+def computePSR(a,b):
+    return np.mean((a**2))/np.mean((b**2))
+
+def generatePerturbData(psr,data,current_label,pretrained_model,t_label,method:str = 'fgsm',n_iter = None):
     '''One sample at a time'''
 
     if method == 'fgsm':
-        perturbation = generateAdvExsFGSM( data, current_label, pretrained_model, t_label = t_label )
-        perturbation, data = np.squeeze( perturbation ), np.squeeze( data )
-        eps = np.sqrt( psr / np.mean( np.var( perturbation ) / np.var( data ) ) )
-        delta = perturbation.clip( -eps, eps )
+        if psr == 0:
+            p = np.zeros_like(data)
+        else:
+            perturbation = generateAdvExsFGSM( data, current_label, pretrained_model, t_label = t_label )
+            p = TOOLS.l2_limiter(psr = psr,perturbation = perturbation,data = data)
+        delta, data = np.squeeze( p ), np.squeeze( data )
     elif method == 'pgd':
-        perturbation = generateAdvExsPGD( data, current_label, pretrained_model,alpha = 1e4, n_iter=20)
-        delta = scaleDeepfool( psr = psr, test_data = data, perturbation = np.asarray(perturbation))
-        delta, data = np.squeeze( delta ), np.squeeze( data )
+        if psr == 0:
+            p = np.zeros_like(data)
+        else:
+            perturbation = generateAdvExsPGD( data, current_label, pretrained_model,t_label=t_label, psr = psr, \
+                                                                                                   n_iter = n_iter )
+            p = TOOLS.l2_limiter( psr = psr, perturbation = perturbation, data = data )
+        delta, data = np.squeeze( p ), np.squeeze( data )
 
 
     adv_data = data + delta
@@ -591,31 +603,47 @@ def generateAdvExsFGSM(input_CSI, label, pretrained_model, t_label: int = None):
     gradient = tape.gradient( loss, input_CSI )
     # Get the sign of the gradients to create the perturbation
     signed_grad = tf.sign(gradient)
-    return signed_grad
-def generateAdvExsPGD(input_CSI, labels, pretrained_model,alpha = 1e4,n_iter:int = 20):
+    return np.asarray(signed_grad)
+def generateAdvExsPGD(input_CSI, labels, pretrained_model,psr,t_label = None, n_iter:int = 0):
+    # print( f'The number of iterations are {n_iter}' )
     loss_object = tf.keras.losses.CategoricalCrossentropy( )
     input_CSI = tf.convert_to_tensor(input_CSI, dtype=tf.float32)
     labels = tf.convert_to_tensor(labels, dtype=tf.float32 )
     gradient = np.zeros(input_CSI.shape)
     for i in range(n_iter):
         model_input = input_CSI + gradient
-        with tf.GradientTape( persistent=True ) as tape:
-            tape.watch( model_input )
-            prediction = pretrained_model( model_input )
-            loss = loss_object( labels, prediction )
-        gradient = gradient + (alpha/(i+1))*tf.sign(tape.gradient( loss, model_input ))
+        if t_label:
+            # if label == t_label:
+            tar_label = tf.convert_to_tensor(
+                    np.expand_dims( to_categorical( t_label - 1, num_classes = 6 ), axis = 0 ),
+                    dtype = tf.float32
+                    )
+            with tf.GradientTape(persistent=True ) as tape:
+                tape.watch( model_input )
+                prediction = pretrained_model( model_input )
+                loss = - loss_object( tar_label, prediction )
+        else:
+            with tf.GradientTape( persistent=True ) as tape:
+                tape.watch( model_input )
+                prediction = pretrained_model( model_input )
+                loss = loss_object( labels, prediction )
+        # gradient = gradient + (alpha/(i+1))*tf.sign(tape.gradient( loss, model_input ))
+        g = tape.gradient( loss, model_input )
+        g_norm = g/np.linalg.norm(g)
+        gradient = gradient + (np.sqrt( (psr/n_iter) /  (np.mean( g_norm**2 ) / np.mean( input_CSI**2 ))  )*g_norm)
     return np.asarray(gradient)
 def runTrain(config, dataset_name):
     m_callback = myCallback()
     # name = 'widar'
 
     config.train_data, config.test_data, config.train_label, config.test_label = gestureDataLoader.getData(config, dataset_name)
-    # test_data = procOBJ.scale( config.test_data, config.D_range )
-    # train_data = procOBJ.scale( config.train_data, config.D_range )
     test_data = config.test_data
     train_data = config.train_data
     test_label = config.test_label
     train_label = config.train_label
+
+    train_data = np.concatenate((train_data, test_data), axis=0)
+    train_label = np.concatenate((train_label, test_label), axis=0)
     if os.path.exists(config.pretrained_model_path):
         Net = tf.keras.models.load_model( config.pretrained_model_path )
         print('=========================================================')
@@ -641,14 +669,14 @@ def runTrain(config, dataset_name):
     )
     # optimizer = tf.keras.optimizers.SGD(learning_rate=config.lr)
     # optimizer = tf.keras.optimizers.Adam(learning_rate = config.lr)
-    Net.compile( loss='categorical_crossentropy', optimizer=optimizer, metrics='acc' )
+    Net.compile( loss='categorical_crossentropy', optimizer=optimizer, metrics='accpgd_attack' )
     # Net.summary( )
     history = Net.fit(
             train_data, train_label,
-            validation_split=0.05,
+            validation_split=0.1,
             batch_size = config.batch_size,
             epochs=config.epoch,
-            callbacks=[ m_callback, lrScheduler ],
+            callbacks=[ earlyStop, lrScheduler ],
             shuffle = True,
             verbose =  1,
 
@@ -656,48 +684,51 @@ def runTrain(config, dataset_name):
     Net.evaluate(test_data, test_label)
     Net.save( config.pretrained_model_path )
 def runAdvExsTestPSR(input_CSI,labels,pretrained_model,psr,ifpltcmd:bool =False,t_label:int=None,
-        attack_method:str='fgsm'):
+        attack_method:str='fgsm',n_iter=None,pdf_name=None):
     '''
     labels_pred: should be one hot coded
+    input_CSI: whole dataset
     '''
     advData = [ ]
     perturb = [ ]
     model = Model( inputs = pretrained_model.input, outputs = pretrained_model.layers[ -2 ].output )
-    if attack_method == 'deepfool':
-        df = loadmat( 'perturbation\\signfi_lab_276_deepfool.mat' )
-        pertEx_all = df[ 'perturbation' ]/50
-        input_CSI = (df[ 'advData' ] - df[ 'perturbation' ])/50
-    for i, test_data in tqdm(enumerate( input_CSI ),desc = f'attack_method:{attack_method}',position = 0):
-        # print(f'Generating advData for {i+1} sample')
-        test_data, current_label = np.expand_dims( test_data, axis = 0 ), np.expand_dims(
-                labels[ i ], axis = 0
-                )
-        if attack_method == 'fgsm' or attack_method == 'pgd':
-            advEx, pertEx = generatePerturbData(
-                    psr = psr, data = test_data, current_label = current_label, pretrained_model =
-                    pretrained_model, t_label = t_label, method = attack_method
+    if attack_method != 'gaussian':
+        if attack_method == 'deepfool':
+            df = loadmat( 'perturbation\\df_signfi_model_lab_276_scale_1.mat' )
+            pertEx_all = df[ 'perturbation' ]
+            input_CSI = (df[ 'advEx' ] - df[ 'perturbation' ])
+        for i, test_data in tqdm(enumerate( input_CSI ),desc = f'attack_method:{attack_method}',position = 0):
+            test_data, current_label = np.expand_dims( test_data, axis = 0 ), np.expand_dims(
+                    labels[ i ], axis = 0
                     )
-        elif attack_method == 'deepfool':
+            if attack_method == 'fgsm' or attack_method == 'pgd':
+                advEx, pertEx = generatePerturbData(
+                        psr = psr, data = test_data, current_label = current_label, pretrained_model =
+                        pretrained_model, t_label = t_label, method = attack_method,n_iter = n_iter
+                        )
+            elif attack_method == 'deepfool':
+                pertEx, _, _, _, _ = deepfool( test_data, model )
+                pertEx = TOOLS.l2_limiter( psr = psr, perturbation = pertEx_all[ i:i + 1, :, :, : ], data = test_data )
+                advEx = test_data + pertEx
+            perturb.append( pertEx )
+            advData.append( advEx )
 
-            # print(i)
-            # pertEx, _, _, _, _ = deepfool( test_data, model )
-            pertEx = scaleDeepfool( psr = psr, test_data = test_data, perturbation = pertEx_all[i:i+1,:,:,:] )
-            advEx = test_data + pertEx
-            # pertEx, data = np.squeeze( pertEx ), np.squeeze( test_data )
-        elif attack_method == 'gaussian':
-            # print(i)
-            # pertEx, _, _, _, _ = deepfool( test_data, model )
-            if i == 0:
-                a = np.random.normal(0, 1, input_CSI.shape)
-            pertEx = scaleDeepfool( psr = psr, test_data = test_data, perturbation = a[i:i+1] )
-            advEx = test_data + pertEx - pertEx.mean( )
-        perturb.append( pertEx )
-        advData.append( advEx )
-    perturb = np.concatenate( perturb, axis = 0 )
-    advData = np.concatenate( advData, axis = 0 )
-    # Choose one perturbation
-    _, accuracy = pretrained_model.evaluate( advData, labels, verbose = 0 )
-    print( f'The accuracy of adversarial samples for PSR = {psr:.5f} is {accuracy:.6f}' )
+            # if i == 0:
+            #     a = np.random.normal(0, 1, input_CSI.shape)
+            # pertEx = scaleDeepfool( psr = psr, test_data = test_data, perturbation = a[ i:i + 1 ] )
+            # advEx = test_data + pertEx - pertEx.mean( )
+        perturb = np.concatenate( perturb, axis = 0 )
+        advData = np.concatenate( advData, axis = 0 )
+        _, accuracy = pretrained_model.evaluate( advData, labels, verbose = 1 )
+
+    if attack_method == 'gaussian':
+        perturb = np.random.normal( 0, 1, size = (1, 200, 60, 3) )
+
+        advData = input_CSI + TOOLS.l2_limiter(
+                psr = psr, perturbation = perturb, data = input_CSI
+                )
+        _, accuracy = pretrained_model.evaluate( advData, labels, verbose = 1 )
+    # print( f'The accuracy of adversarial samples for PSR = {psr:.5f} is {accuracy:.6f}' )
     if 0:
         n_samples = perturb.__len__()
         selected_perturb = np.repeat( perturb[ np.random.choice(n_samples,1) ],n_samples, axis = 0)
@@ -708,7 +739,10 @@ def runAdvExsTestPSR(input_CSI,labels,pretrained_model,psr,ifpltcmd:bool =False,
         label_pred = np.argmax(pretrained_model.predict( advData ),axis=1)
         label_true = np.argmax(labels,axis=1)
         title = f'PSR: {psr}, Accuracy: {accuracy:.2f}, target: {t_label}'
-        plotSig.pltcm( label_test_pred = label_pred, true_label = label_true, title = title )
+        plotSig.pltcm( label_test_pred = label_pred, true_label = label_true, title = None )
+        if pdf_name is not None:
+            out = os.path.join( 'RESULTS_FIGS', pdf_name )
+            plt.savefig( out + '.pdf', bbox_inches = 'tight', )
     # print( f'The accuracy of universal adversarial samples for PSR = {psr:.5f} is {accuracy_2:.2f}' )
     # a = [accuracy,accuracy_2]
     return accuracy,perturb,advData
@@ -741,15 +775,76 @@ def runAdvExsTestEps(input_CSI,labels,pretrained_model,eps,ifpltcmd:bool =False,
     loss, accuracy = pretrained_model.evaluate( advData, labels, verbose = 0 )
     if ifpltcmd:
       title = f'eps: {eps}, Accuracy: {accuracy:.2f}, target: {t_label}'
-      plotSig.pltcm( label_test_pred = label_adv_pred_container, true_label = true_label, title = title )
+      plotSig.pltcm( label_test_pred = label_adv_pred_container, true_label = true_label, title = None )
     print( f'Accuracy for eps = {eps:.3f} is {accuracy:.2f}' )
     return accuracy
 if __name__ == '__main__':
-    model_structure_list = ['alex1', 'alex2', 'alex3','cnn', 'vgg8', 'vgg10' ,'defult','vgg16','vgg19','resnet',
-                            'resnet6']
-    model_depth_list = ['resnet','resnet6','resnet10','resnet12']
-    all_model = list(set([*model_structure_list,*model_depth_list]))
-    # ==================================================================================================================
+    if 0:
+        model_structure_list = ['alex1', 'alex2', 'alex3','cnn', 'vgg8', 'vgg10' ,'defult','vgg16','vgg19','resnet',
+                                'resnet6']
+        model_depth_list = ['resnet','resnet6','resnet10','resnet12']
+        all_model = list(set([*model_structure_list,*model_depth_list]))
+        # ==================================== Widar =======================================================================
+        # config.data_dir = [config.sensingDataset_Root + 'Widar\\' + '20181109',
+        #                    # config.sensingDataset_Root + 'Widar\\' + '20181115',
+        #                    # 'E:\\SensingDataset\\Widar\\20181118'
+        #                    ]
+        # config.D_range = 1
+        # config.location = [5]
+        # config.receiver = ['r4']
+        # config.orientation = [ 2,3,4 ]
+        # dataset_name = 'widar'
+        #
+        # for dnn in ['defult']:
+        #     config.DNN_name = dnn
+        #     runTrain(config,'widar')
+
+        seed_container = [ 2,3,4,5, 6, 7, 8, 9, 10,42 ]
+
+        config.DNN_name = 'defult'
+        model_name = [
+                'widar_model_defult_loc5_ori234_Rx1_scale_1_envir_1.h5',
+                'widar_model_defult_loc5_ori234_Rx2_scale_1_envir_1.h5',
+                'widar_model_defult_loc5_ori234_Rx3_scale_1_envir_1.h5',
+                'widar_model_defult_loc5_ori234_Rx4_scale_1_envir_1.h5',
+                'widar_model_defult_loc5_ori234_Rx5_scale_1_envir_1.h5',
+                'widar_model_defult_loc5_ori234_Rx6_scale_1_envir_1.h5',
+                      ]
+        for seed in seed_container:
+            config.set_seed = seed
+            for mn in model_name:
+                config.DNN_name = mn.split( '_' )[ 2 ]
+                if mn not in os.listdir( config.victim_model_Root ):
+                    raise Exception( f'The model {mn} is not defined' )
+                model_path = os.path.join( config.victim_model_Root, mn )
+                location_all = re.findall( r'\d+', mn.split( 'loc' )[ 1 ] )[ 0 ]
+                orientation_all = re.findall( r'\d+', mn.split( 'ori' )[ 1 ] )[ 0 ]
+                Rx_all = re.findall( r'\d+', mn.split( 'Rx' )[ 1 ] )[ 0 ]
+                config.location = [ int( a ) for a in location_all ]
+                config.orientation = [ int( a ) for a in orientation_all ]
+                config.receiver = [ f'r{int( a )}' for a in Rx_all ]
+                config.data_dir = [ config.sensingDataset_Root + 'Widar\\' + '20181109',
+                                    # config.sensingDataset_Root + 'Widar\\' + '20181115'
+                                    ]
+                model_path = os.path.join( config.victim_model_Root, mn )
+                print( f'generating UAP for model {mn}' )
+                config.train_data, config.test_data, config.train_label, config.test_label = gestureDataLoader.getData(
+                        config,
+                        'widar'
+                        )
+                train_data = np.concatenate( (config.train_data, config.test_data), axis = 0 )
+                train_label = np.concatenate( (config.train_label, config.test_label), axis = 0 )
+                data = copy.deepcopy( train_data )
+                test_label = copy.deepcopy( train_label )
+                # Attack_model = tf.keras.models.load_model( model_path )
+                # Attack_model.evaluate(config.train_data, config.train_label)
+                if model_path == config.pretrained_model_path:
+                    current_UAP = genereate_UAP( dataset = data, model_path = config.pretrained_model_path ,config = config)
+                    per_name = 'UAP_' + mn.split( '.' )[ 0 ] + f'_seed_{config.set_seed}' + '.h5'
+                    path = os.path.join( config.pert_Mat_Root, per_name )
+                    with h5py.File( path, 'w' ) as hdf:
+                        hdf.create_dataset( 'universal_perturbation', data = current_UAP )
+    # ====================================SignFi========================================================================
     if 0:
         config.train_data, config.test_data, config.train_label, config.test_label = gestureDataLoader.getData(
                 config, 'signfi'
@@ -761,22 +856,12 @@ if __name__ == '__main__':
             print( p )
             model = tf.keras.models.load_model( os.path.join( config.victim_model_Root, p ) )
             model.evaluate( config.test_data, config.test_label )
-
     '''Run training process'''
-    # config.data_dir = [config.sensingDataset_Root + 'Widar\\' + '20181109',
-    #                    config.sensingDataset_Root + 'Widar\\' + '20181115']
-    # config.D_range = 1
-    # config.location = [1,2,3,4,5,6]
-    # config.orientation = [ 2 ]
-    # for dnn in ['cnnlstm']:
-    #     config.DNN_name = dnn
-    #     runTrain(config,'widar')
-    # config.data_dir = 'E:\\SensingDataset\\WiAR'
-    tree = {
-            'home_276': [ 'vgg8', 'vgg10' ],
-            'lab_276' : [ 'cnn', 'vgg8', 'vgg10' ]
-            }
     if 0:
+        tree = {
+                'home_276': [ 'vgg8', 'vgg10' ],
+                'lab_276' : [ 'cnn', 'vgg8', 'vgg10' ]
+                }
         for envir in tree:
             config.source = envir
             dnns = tree[envir]
@@ -784,12 +869,9 @@ if __name__ == '__main__':
                 print(f'Training the model: {dnn} with source: {config.source}.....')
                 config.DNN_name = dnn
                 runTrain(config,'signfi')
-    # ==================================================================================================================
-    '''Evaluation of adversarial samples'''
+    '''UAP generation'''
     if 0:
-        import re
-        import h5py
-        from Experiments import *
+
         '''Prepare data'''
         "for model 1. cnn, 2.cnn-lstm"
 
@@ -799,9 +881,10 @@ if __name__ == '__main__':
         #                     config.sensingDataset_Root + 'Widar\\' + '20181115' ]
         # model_name = os.listdir(path=config.victim_model_Root )
         # model_name = ['signfi_model_defult_lab_276_scale_1.h5',]
-        tree['lab_276'].append('alex1')
-        tree['lab_276'].append('alex2')
-        tree['lab_276'].append('alex3')
+        tree = {
+                'home_276': [ 'defult' ],
+                'lab_276' : [ 'defult' ]
+                }
 
         model_name = []
         for source in tree:
@@ -814,80 +897,87 @@ if __name__ == '__main__':
         #               'signfi_model_vgg19_home_276_scale_1.h5',
         #               'signfi_model_resnet_home_276_scale_1.h5',
         #               'signfi_model_resnet6_home_276_scale_1.h5']
-        seed_container = [5,6,7,8,9,10]
-        d_type_list = ['signfi',]
-        for type_data in d_type_list:
-            for seed in seed_container:
-                config.set_seed = seed
-                for mn in model_name:
-                    config.DNN_name = mn.split( '_' )[ 2 ]
-                    if type_data not in mn:
-                        continue
-                    if config.DNN_name not in all_model:
-                        continue
-                    if mn not in os.listdir(config.victim_model_Root):
-                        raise Exception(f'The model { mn } is not defined')
-                    if type_data == 'widar':
-                        model_path = os.path.join(config.victim_model_Root,mn )
-                        location_all = re.findall( r'\d+',  mn.split('loc')[1])[0]
-                        config.location = [int(a) for a in location_all]
-                        config.orientation = [2]
-                        config.data_dir = [ config.sensingDataset_Root + 'Widar\\' + '20181109',
-                                            config.sensingDataset_Root + 'Widar\\' + '20181115' ]
-                    elif type_data == 'signfi':
-                        model_path = os.path.join(config.victim_model_Root,mn )
-                        if 'home_276' in mn:
-                            config.source = 'home_276'
-                        elif 'lab_276' in mn:
-                            config.source = 'lab_276'
-                        # else:
-                        #     raise 'wrong'
-                    elif type_data == 'wiar':
-                        model_path = os.path.join( config.victim_model_Root, mn )
-                    print(f'generating UAP for model {mn}')
-                    config.train_data, config.test_data, config.train_label, config.test_label = gestureDataLoader.getData(
-                            config,
-                            type_data
-                            )
-                    test_data = copy.deepcopy( config.test_data )
-                    test_label = copy.deepcopy( config.test_label )
-                    # Attack_model = tf.keras.models.load_model( model_path )
-                    # Attack_model.evaluate(config.train_data, config.train_label)
-                    if model_path == config.pretrained_model_path:
-                        current_UAP = genereate_UAP(dataset = test_data, model_path = config.pretrained_model_path)
-                        per_name = 'UAP_' + mn.split('.')[0]+ f'_seed_{config.set_seed}' + '.h5'
-                        path = os.path.join( config.pert_Mat_Root, per_name )
-                        with h5py.File( path, 'w' ) as hdf:
-                            hdf.create_dataset( 'universal_perturbation', data = current_UAP )
+        seed_container = [42]
+
+        type_data = 'signfi'
+        method = 'pgd'
+        for seed in seed_container:
+            config.set_seed = seed
+            for mn in model_name:
+                config.DNN_name = mn.split( '_' )[ 2 ]
+                if type_data not in mn:
+                    continue
+                # if config.DNN_name not in all_model:
+                #     continue
+                if mn not in os.listdir(config.victim_model_Root):
+                    raise Exception(f'The model { mn } is not defined')
+                if type_data == 'widar':
+                    model_path = os.path.join(config.victim_model_Root,mn )
+                    location_all = re.findall( r'\d+',  mn.split('loc')[1])[0]
+                    config.location = [int(a) for a in location_all]
+                    config.orientation = [2]
+                    config.data_dir = [ config.sensingDataset_Root + 'Widar\\' + '20181109',
+                                        config.sensingDataset_Root + 'Widar\\' + '20181115' ]
+                elif type_data == 'signfi':
+                    model_path = os.path.join(config.victim_model_Root,mn )
+                    if 'home_276' in mn:
+                        config.source = 'home_276'
+                    elif 'lab_276' in mn:
+                        config.source = 'lab_276'
+                elif type_data == 'wiar':
+                    model_path = os.path.join( config.victim_model_Root, mn )
+                print(f'generating UAP for model {mn}')
+                config.train_data, config.test_data, config.train_label, config.test_label = gestureDataLoader.getData(
+                        config,
+                        type_data
+                        )
+                test_data = copy.deepcopy( config.test_data )
+                test_label = copy.deepcopy( config.test_label )
+
+                if model_path == config.pretrained_model_path:
+                    # current_UAP = genereate_UAP(dataset = test_data, model_path = config.pretrained_model_path)
+                    current_UAP = genereate_UAP(dataset = test_data, model_path = config.pretrained_model_path,
+                            config =config, method = method,psr=0.003,
+                            labels = test_label)
+                    per_name = 'UAP_' + mn.split('.')[0]+ f'_seed_{config.set_seed}' + f'_method_{method}_'+'.h5'
+                    path = os.path.join( config.pert_Mat_Root, per_name )
+                    with h5py.File( path, 'w' ) as hdf:
+                        hdf.create_dataset( 'universal_perturbation', data = current_UAP )
+        with h5py.File( path, 'r' ) as f:
+            UAP_data = np.asarray( list( f[ 'universal_perturbation' ] ) )
+        victim_model = tf.keras.models.load_model( os.path.join(config.victim_model_Root,model_name[0]) )
+        victim_model.evaluate(config.test_data+UAP_data,config.test_label)
+        print(f'PSR = {computePSR(UAP_data,config.test_data[0])}')
         # ==================================================================================================================
-        #     acc_fgsm_all = []
-        #     acc_uni_all = []
-        #     config.D_range = 50
-        #     config.attacker_model_Root = 'SavedModel\\PSR'
-        #     model_name = 'signfi_model_lab_276_scale_50.h5'
-        #     model_path = os.path.join(config.attacker_model_Root, model_name)
-        #     Attack_model = tf.keras.models.load_model( model_path )
-        #     config.train_data, config.test_data, config.train_label, config.test_label = gestureDataLoader.getData(
-        #             config,
-        #             'signfi'
-        #             )
-        #     test_data = procOBJ.scale( config.test_data, config.D_range )
-        #     for psr in np.arange(0,0.001,0.0001):
-        #         acc_fgsm, _, _ = DeepNet.runAdvExsTestPSR(
-        #                 input_CSI = test_data,
-        #                 labels_pred = config.test_label,
-        #                 pretrained_model = Attack_model,
-        #                 psr = psr,
-        #                 t_label = None
-        #                 )
-        #         acc_fgsm_all.append(acc_fgsm[0])
-        #         acc_uni_all.append(acc_fgsm[1])
-        #     plt.plot( np.arange(0,0.001,0.0001), acc_fgsm_all, marker = 'o', label = 'Adversarial samples specific to input' )
-        #     plt.plot( np.arange(0,0.001,0.0001), acc_uni_all, marker = 'x',label = 'Adversarial samples not specific to input' )
-        #     plt.ylabel('Accuracy')
-        #     plt.legend()
-        #     plt.xlabel('PSR')
-        #     plt.grid()
+    acc_fgsm_all = []
+    acc_uni_all = []
+    config.D_range = 50
+    config.attacker_model_Root = 'SavedModel\\PSR'
+    model_name = 'signfi_model_lab_276_scale_1.h5'
+    model_path = os.path.join(config.attacker_model_Root, model_name)
+    Attack_model = tf.keras.models.load_model( model_path )
+    config.train_data, config.test_data, config.train_label, config.test_label = gestureDataLoader.getData(
+            config,
+            'signfi'
+            )
+    test_data = procOBJ.scale( config.test_data, config.D_range )
+    for psr in np.arange(0,0.001,0.0001):
+        acc_fgsm, _, _ = DeepNet.runAdvExsTestPSR(
+                input_CSI = test_data,
+                labels = config.test_label,
+                pretrained_model = Attack_model,
+                attack_method = 'fgsm',
+                psr = psr,
+                t_label = None
+                )
+        acc_fgsm_all.append(acc_fgsm[0])
+        acc_uni_all.append(acc_fgsm[1])
+    plt.plot( np.arange(0,0.001,0.0001), acc_fgsm_all, marker = 'o', label = 'Adversarial samples specific to input' )
+    plt.plot( np.arange(0,0.001,0.0001), acc_uni_all, marker = 'x',label = 'Adversarial samples not specific to input' )
+    plt.ylabel('Accuracy')
+    plt.legend()
+    plt.xlabel('PSR')
+    plt.grid()
 
 
 

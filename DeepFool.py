@@ -10,7 +10,6 @@ def deepfool(input_CSI, pretrained_model, overshoot=0.002, max_iter=50,):
     '''
     model = pretrained_model
     num_classes = pretrained_model.output_shape[1]
-
     image_norm = tf.cast(input_CSI, tf.float32 )
     f_image = model(image_norm).numpy().flatten()
     I = (np.array(f_image)).flatten().argsort()[::-1]
