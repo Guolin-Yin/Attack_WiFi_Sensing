@@ -1,8 +1,8 @@
 import numpy as np
-from DeepFool import deepfool
+from utils.DeepFool import deepfool
 from tqdm import tqdm
 import tensorflow as tf
-from TOOLS import *
+from utils.TOOLS import *
 # from DeepNet import generateAdvExsPGD
 def proj_lp(v, xi, p, data = None):
 
@@ -20,7 +20,7 @@ def proj_lp(v, xi, p, data = None):
 
     return v
 
-def universal_perturbation(dataset,f,overshoot, delta=0.1, max_iter_uni = 100, xi=10, p=np.inf, max_iter_df=50):
+def universal_perturbation(dataset,f,overshoot, delta=0.1, max_iter_uni = 100, xi=50, p=np.inf, max_iter_df=50):
     """
     :param dataset: Images of size (M,H,W,C) (M: number of images)
     :param f: feedforward function (input: images, output: values of activation BEFORE softmax).

@@ -74,6 +74,8 @@ def train_loop(config,model,train_ds,val_ds,psr,method,**kwargs):
     train_acc_metric = tf.keras.metrics.CategoricalAccuracy()
     val_acc_metric = tf.keras.metrics.CategoricalAccuracy()
     loss_record_min = np.inf
+    if not os.path.exists(config.model_path['adv_robust_model_path'].split('/')[0]):
+        os.makedirs(config.model_path['adv_robust_model_path'].split('/')[0])
     if os.path.exists(config.model_path['adv_robust_model_path']):
         print("Loading model from disk")
         model.load_weights(config.model_path['adv_robust_model_path'])
@@ -85,6 +87,7 @@ def train_loop(config,model,train_ds,val_ds,psr,method,**kwargs):
         val_acc,train_acc,t_loss_val,t_loss = train_epoch(config,model,train_ds,val_ds,
                                                           optimizer,loss_fn,train_acc_metric,
                                                           val_acc_metric,psr,method,**kwargs)
+
         if loss_record_min > t_loss_val:
             loss_record_min = t_loss_val
             idx_min = i
@@ -138,6 +141,17 @@ def get_adv_data(psr,model,x_batch,y_batch,method = 'fgsm',config = None,to_tf_d
                         t_label             = None,
                         method              = method,
                         **kwargs)[1]  
+    
+    # for x,y in zip(x_all,y_all):
+    #     delta.append(generatePerturbData(psr                = psr,
+    #                                     data                = np.expand_dims(x,0),
+    #                                     current_label       = np.expand_dims(y,0),
+    #                                     pretrained_model    = model,
+    #                                     t_label             = None,
+    #                                     method              = method,
+    #                                     **kwargs)[1]                           
+    #     )
+
     x_adv  = x_all + delta
     if to_tf_dataset:
         adv_dataset = tf.data.Dataset.from_tensor_slices((x_adv, y_all))

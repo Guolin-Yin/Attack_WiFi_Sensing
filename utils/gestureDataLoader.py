@@ -31,8 +31,10 @@ class preprocessing:
         scale_data = (re_data - np.min(re_data,axis=1,keepdims = True)) / ( np.max(re_data,axis=1,keepdims = True) -
                                                                            np.min(re_data,axis=1,keepdims = True) )
         scale_data = scale_data.reshape(data.shape)
-        # for i in range(len(data)):
-        #     buf.append((data[i] - np.min(data[i]))/(np.max(data[i]) - np.min(data[i])))
+        if not isinstance(D_range,int):
+            if len(D_range.shape) == 1:
+                D_range = np.expand_dims(D_range,axis=1)
+                D_range = (np.ones_like(scale_data).reshape((scale_data.shape[0],-1))*D_range).reshape(scale_data.shape)
         return scale_data * D_range
 class signDataLoader:
     ''':returns
@@ -280,7 +282,8 @@ def getData(config, dataset_name:str,ifzscore = False,ifscale = True):
                                        +f'_scale_{config.D_range}_{envir[config.data_dir[0]]}' +'.h5'
     elif dataset_name =='signfi':
         # config.data_dir = '/Users/guolinyin/Library/Mobile Documents/com~apple~CloudDocs/PhD Research Files/Dataset/SignFi/Dataset'
-        config.data_dir = 'E:\SensingDataset\SignFi\Dataset'
+        # config.data_dir = 'E:\SensingDataset\SignFi\Dataset'
+        config.data_dir = '/home/b218/GuolinDir/SensingDataset/SignFi/Dataset'
         # config.data_dir = 'C:\\Users\\colinyin\\Desktop\\SignFi\\Dataset'
         # config.data_dir = '/Users/guolinyin/Google 云端硬盘/Colab Notebooks/SensingDataset/SignFi/Dataset'
         # config.source = 'lab_276'

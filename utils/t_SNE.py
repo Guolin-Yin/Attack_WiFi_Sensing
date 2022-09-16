@@ -15,7 +15,7 @@ from tensorflow.keras import backend as K
 import plotSig
 current_dir = os.getcwd( )
 sys.path.append( 'G:\我的云端硬盘\Colab Notebooks\AdvAttackandDefense' )
-import DeepNet
+import ATKMethods
 config = Config.getconfig( )
 def visualize_scatter_domain( data_2d, label_ids, perplexity,n_iter,figsize = (10, 10) ):
 	plt.figure( figsize = figsize )
@@ -135,7 +135,7 @@ if __name__ == '__main__':
 	for i, test_data in enumerate( data_test ):
 		test_data, current_label = np.expand_dims( test_data, axis = 0 ), np.expand_dims(label_test[ i ], axis = 0)
 		advData.append(
-				DeepNet.generatePerturbData(
+				ATKMethods.generatePerturbData(
 						psr = 0.01, data = test_data, current_label = current_label, pretrained_model =
 						pretrained_model, t_label = None
 						)
