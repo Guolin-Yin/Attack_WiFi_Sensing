@@ -138,17 +138,6 @@ def get_adv_data(psr,model,x_batch,y_batch,method = 'fgsm',config = None,to_tf_d
                         t_label             = None,
                         method              = method,
                         **kwargs)[1]  
-    
-    # for x,y in zip(x_all,y_all):
-    #     delta.append(generatePerturbData(psr                = psr,
-    #                                     data                = np.expand_dims(x,0),
-    #                                     current_label       = np.expand_dims(y,0),
-    #                                     pretrained_model    = model,
-    #                                     t_label             = None,
-    #                                     method              = method,
-    #                                     **kwargs)[1]                           
-    #     )
-
     x_adv  = x_all + delta
     if to_tf_dataset:
         adv_dataset = tf.data.Dataset.from_tensor_slices((x_adv, y_all))
