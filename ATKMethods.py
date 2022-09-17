@@ -31,7 +31,7 @@ from scipy.io import savemat, loadmat
 import matplotlib.pyplot as plt
 from DeepFool import deepfool
 from Universal_pert import universal_perturbation
-# from Experiments import scaleDeepfool
+from utils.TOOLS import scaleDeepfool #last
 gpus = tf.config.experimental.list_physical_devices( 'GPU' )
 if gpus:
     try:
