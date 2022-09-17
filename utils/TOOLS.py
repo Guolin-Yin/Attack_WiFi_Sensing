@@ -19,24 +19,8 @@ def load_h5(path, keys, mode = 'r'):
 			a_group_key = list( f.keys( ) )[ 0 ]
 			# Get the data
 			data = list( f[ a_group_key ] )
-def saveToPath(func):
-	def wrapper(*args, **kwargs):
-		value_to_save = func()
-		# if :
-		# assert type( value_to_save ) == dict, 'Value cannot be a dictionary'
-		try:
-			with h5py.File(kwargs['path'],'w') as hdf:
-				hdf.create_dataset('accuracy',data = value_to_save)
-		except Exception as e:
-			print(e)
-			print('The return value is a dictionary, this value were not been saved')
-		return value_to_save
-	return wrapper
-def logger(func):
-	def wrapper(*args,**kwargs):
-		accuracy, name = func(*args, **kwargs)
-		return accuracy,name
-	return wrapper
+
+
 '''plotting tools'''
 def plotting(psr_range = None, acc_all = None):
 	'''
@@ -232,25 +216,7 @@ def scaleDeepfool(psr,test_data,perturbation):
  
 	
 	return scaled_perturbation
-def simi_pred(trained_model,config,perturbation):
-	train_label = np.argmax(config.train_label,axis = 1)
-	n_classes = train_label.max() + 1
-	idx_all = []
-	for i in range(n_classes):
-		idx = np.where(train_label == i)[0]
-		id_this = np.random.choice(idx,1,replace = 0)
-		idx_all.append(id_this)
-	idx_all = np.squeeze(np.asarray(idx_all))
-	support_data = config.train_data[idx_all]
-	adv_data = config.test_data + perturbation
-	fe = Model( inputs = trained_model.input, outputs = trained_model.layers[-2].output )
-	# ori_pred = fe.predict(config.test_data)
-	adv_pred = fe.predict(adv_data)
-	sup_pred = fe.predict(support_data)
-	pred_labels = [ cosine_similarity( adv_pred[ i:i + 1 ], sup_pred ).argmax( axis=1 ) for i in range(
-			adv_pred.__len__( )	) ]
-	acc = np.sum(np.asarray(pred_labels).squeeze() == config.test_label.argmax(axis=1))/config.test_data.__len__( )
-	return acc
+
 def heatmap(acc_dict,title,vic_model = ['defult', 'alex1', 'alex2', 'alex3', 'vgg19'],idx = -1,ifsave = False):
 	import numpy as np
 	import matplotlib
@@ -289,54 +255,54 @@ def heatmap(acc_dict,title,vic_model = ['defult', 'alex1', 'alex2', 'alex3', 'vg
 			acc_matrix_ori.append(vic_ori_acc)
 		return np.asarray(acc_matrix),np.asarray(acc_matrix_ori)
 
-	acc,acc_ori = getAccMatrix(acc_dict = acc_dict,
-								vic_model = vic_model,
-								atk_model = atk_model,
-								idx = idx)
-	'''Model specific factors'''
-	# atk_model = [ 'cnnlstm', 'cnn', 'alex3', 'alex2', 'alex1', 'default' ]
-	# victim = [ 'default', 'alex1', 'alex2', 'alex3', 'cnn', 'cnnlstm' ]
+	# acc,acc_ori = getAccMatrix(acc_dict = acc_dict,
+	# 							vic_model = vic_model,
+	# 							atk_model = atk_model,
+	# 							idx = idx)
+	# '''Model specific factors'''
+	# # atk_model = [ 'cnnlstm', 'cnn', 'alex3', 'alex2', 'alex1', 'default' ]
+	# # victim = [ 'default', 'alex1', 'alex2', 'alex3', 'cnn', 'cnnlstm' ]
 
-	# accpgd_attack = np.round( 1 - np.array( [
-	# 		[ 0.395, 0.355, 0.551, 0.404, 0.298, 0.098, ],
-	# 		[ 0.812, 0.766, 0.992, 0.687, 0.55, 0.475, ],
-	# 		[ 0.506, 0.4438, 0.669, 0.393, 0.324, 0.21, ],
-	# 		[ 0.364, 0.2857, 0.572, 0.416, 0.375, 0.158, ],
-	# 		[ 0.33, 0.1896, 0.504, 0.424, 0.273, 0.192, ],
-	# 		[ 0.383, 0.274, 0.584, 0.433, 0.332, 0.196, ],] ),2 )
-	acc = np.round((acc_ori-acc)/acc_ori,2)
-	'''Task specific factors'''
-	# target models using default model
-	# atk_model= ['wiar','widar','signfi']
-	# victim= ['signfi','widar','wiar']
-	# accpgd_attack = np.round(1 - np.array([
-	# 		[0.38,0.25,0.329],
-	# 		[0.5765,0.194,0.972],
-	# 		[0.2346,0.42,0.966]
-	# 		]),2)
-	fig, ax = plt.subplots( )
-	im = ax.imshow( acc,cmap = 'magma_r',vmin=0.65, vmax=1 )
-	# im = plt.imshow( acc, cmap = 'magma_r' )
-	# Show all ticks and label them with the respective list entries
-	plt.yticks(  np.arange( len(atk_model ) ),atk_model_print )
-	plt.xticks(  np.arange( len(vic_model ) ),vic_model_print )
-	# plt.title(title)
-	# Rotate the tick labels_pred and set their alignment.
-	plt.setp( ax.get_xticklabels( ), rotation=45, ha="right",
-			  rotation_mode="anchor" )
-	# Loop over data dimensions and create text annotations.
-	for i in range( len( vic_model ) ):
-		for j in range( len( atk_model ) ):
-			text = ax.text( j, i, acc[ i, j ],
-							ha="center", va="center", color="white" )
+	# # accpgd_attack = np.round( 1 - np.array( [
+	# # 		[ 0.395, 0.355, 0.551, 0.404, 0.298, 0.098, ],
+	# # 		[ 0.812, 0.766, 0.992, 0.687, 0.55, 0.475, ],
+	# # 		[ 0.506, 0.4438, 0.669, 0.393, 0.324, 0.21, ],
+	# # 		[ 0.364, 0.2857, 0.572, 0.416, 0.375, 0.158, ],
+	# # 		[ 0.33, 0.1896, 0.504, 0.424, 0.273, 0.192, ],
+	# # 		[ 0.383, 0.274, 0.584, 0.433, 0.332, 0.196, ],] ),2 )
+	# acc = np.round((acc_ori-acc)/acc_ori,2)
+	# '''Task specific factors'''
+	# # target models using default model
+	# # atk_model= ['wiar','widar','signfi']
+	# # victim= ['signfi','widar','wiar']
+	# # accpgd_attack = np.round(1 - np.array([
+	# # 		[0.38,0.25,0.329],
+	# # 		[0.5765,0.194,0.972],
+	# # 		[0.2346,0.42,0.966]
+	# # 		]),2)
+	# fig, ax = plt.subplots( )
+	# im = ax.imshow( acc,cmap = 'magma_r',vmin=0.65, vmax=1 )
+	# # im = plt.imshow( acc, cmap = 'magma_r' )
+	# # Show all ticks and label them with the respective list entries
+	# plt.yticks(  np.arange( len(atk_model ) ),atk_model_print )
+	# plt.xticks(  np.arange( len(vic_model ) ),vic_model_print )
+	# # plt.title(title)
+	# # Rotate the tick labels_pred and set their alignment.
+	# plt.setp( ax.get_xticklabels( ), rotation=45, ha="right",
+	# 		  rotation_mode="anchor" )
+	# # Loop over data dimensions and create text annotations.
+	# for i in range( len( vic_model ) ):
+	# 	for j in range( len( atk_model ) ):
+	# 		text = ax.text( j, i, acc[ i, j ],
+	# 						ha="center", va="center", color="white" )
 
-	plt.colorbar(im)
-	# plt.clim( 0, 1 )
-	fig.tight_layout( )
-	plt.show( )
-	if ifsave:
-		out = os.path.join('RESULTS_FIGS',title)
-		plt.savefig( out + '.pdf',bbox_inches='tight',  )
+	# plt.colorbar(im)
+	# # plt.clim( 0, 1 )
+	# fig.tight_layout( )
+	# plt.show( )
+	# if ifsave:
+	# 	out = os.path.join('RESULTS_FIGS',title)
+	# 	plt.savefig( out + '.pdf',bbox_inches='tight',  )
 
 
 '''Experiments'''
