@@ -7,6 +7,8 @@ from utils.Universal_pert import *
 import utils.gestureDataLoader as gestureDataLoader
 import copy
 procOBJ = gestureDataLoader.preprocessing( )
+def comp_atk_success_rate(acc_array):
+	return (acc_array[0] - acc_array)/acc_array[0]
 '''Loading tools'''
 def load_h5(path, keys, mode = 'r'):
 	if mode=='r':
@@ -124,9 +126,7 @@ def plotting_bar_chart(acc_all,psr_idx = 5):
 	# plt.xticks( id + width / 2, ('alex1','alex2','alex3','cnn','cnnlstm','defult','Guassian noise'))
 	plt.xticks( id + width / 2, net_name )
 
-def save_to_mat(path,**kargs):
 
-	savemat(path,kargs)
 
 def l2_limiter(psr,perturbation,data):
 	per_norm = perturbation / np.linalg.norm( perturbation )
@@ -175,6 +175,7 @@ def genereate_UAP(dataset,model_path,config,method = 'deepfool',labels = None,ps
 	:param model_path: the attack model path
 	:return: the UAP
 	'''
+	assert isinstance(model_path,str), 'the model path should be a string'
 	victim_model = tf.keras.models.load_model(model_path )
 
 
@@ -199,10 +200,10 @@ def genereate_UAP(dataset,model_path,config,method = 'deepfool',labels = None,ps
 	elif method == 'pgd':
 		UAP = universal_perturbation_PGD(dataset = dataset,labels = labels,f = victim_model,psr = psr)
 	return UAP
-def scaleDeepfool(psr,test_data,perturbation):
+def scaleDeepfool(psr,x,perturbation):
 	p = copy.deepcopy(perturbation.reshape(perturbation.shape[0],-1))
 	scale_factor = np.sqrt(
-			psr * test_data.var( ) * ((p.max( axis = 1) - p.min( axis = 1 )) ** 2) /
+			psr * x.var( ) * ((p.max( axis = 1) - p.min( axis = 1 )) ** 2) /
 			p.var( axis = 1)
 			)
 	scaled_perturbation = procOBJ.scale( perturbation, scale_factor )
@@ -401,13 +402,13 @@ def compare_deepFool_and_FGSM_UAP():
 		plt.plot(psr_all[idx],accuracy[i][idx],label = label[i],marker =marker[i],ms = s,fillstyle=Line2D.fillStyles[
 			-1] )
 	# plt.plot( psr_all, fgsm_all, label = 'one-step FGSM', marker = 's',ms=s ,fillstyle
-    #     =Line2D.fillStyles[-1])
+	#     =Line2D.fillStyles[-1])
 	# plt.plot( psr_all, df_all, label = 'DeepFool', marker = 'o' ,ms=s,fillstyle
-    #     =Line2D.fillStyles[-1])
+	#     =Line2D.fillStyles[-1])
 	# plt.plot( psr_all, UAP_all, label = 'UAP', marker = '4' ,ms=s,fillstyle
-    #     =Line2D.fillStyles[-1])
+	#     =Line2D.fillStyles[-1])
 	# plt.plot( psr_all, awgn_all, label = 'Guassian noise', marker = 'v',ms=s ,fillstyle
-    #     =Line2D.fillStyles[-1])
+	#     =Line2D.fillStyles[-1])
 	plt.ylabel( 'Accuracy' )
 	plt.xlabel( 'PSR' )
 	plt.grid( alpha = 0.4 )
@@ -449,7 +450,7 @@ def cross_domain_UAP_test_widar():
 		'''Cross domain universal perturbation testing'''
 		config.pert_Mat_Root = 'utils\\perturbation'
 		uni_per_widar_in_domain = loadmat(os.path.join(config.pert_Mat_Root,
-            'uni_per_widar_model_loc2_ori123456_scale_1_user_2_envir_2_20181118.mat' ))['universal_perturbation']
+			'uni_per_widar_model_loc2_ori123456_scale_1_user_2_envir_2_20181118.mat' ))['universal_perturbation']
 		uni_per_widar = loadmat(
 				os.path.join(
 						config.pert_Mat_Root,
@@ -493,7 +494,7 @@ def compare_DNN_difference(
 		# victim_model_path = config.attacker_model_Root  + '\\wiar_model_defult_scale_1numuser_10.h5',
 		victim_model_path =
 		# config.victim_model_Root +
-		                    '\\widar_model_loc2_ori123456_scale_1_user_2_envir_2_20181118.h5',
+							'\\widar_model_loc2_ori123456_scale_1_user_2_envir_2_20181118.h5',
 		use_Guas = False,
 		# 'SavedModel\\victim_model\\widar_model_loc2_ori123456_scale_1_user_2_envir_2_20181118.h5',
 		*args,**UAP_file_names):

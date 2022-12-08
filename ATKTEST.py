@@ -196,33 +196,10 @@ def deepfool_widar_NTA():
 # Victim model: signfi_model_defult_lab_276_scale_50.h5
 #Attack UAP: UAP_signfi_model_defult_lab_276_scale_50.h5
 def UAPTest(
-		# victim_model_path = 'SavedModel\\PSR\\' + 'signfi_model_lab_276_scale_1.h5',
-		# victim_model_path = config.attacker_model_Root  + '\\wiar_model_defult_scale_1numuser_10.h5',
 		victim_model_path = config.victim_model_Root + '\\signfi_model_defult_lab_276_scale_1.h5',
 		psr_range = None,
 		use_Guas = False,
-		# 'SavedModel\\victim_model\\widar_model_loc2_ori123456_scale_1_user_2_envir_2_20181118.h5',
 		*args,**UAP_file_names):
-	# config.D_range = 1
-	# if 'widar' in victim_model_path:
-	# 	# config.data_dir = ['E:\\SensingDataset\\Widar\\20181118\\user2']
-	# 	config.data_dir = [ config.sensingDataset_Root + 'Widar\\' + '20181109',
-	# 	                    config.sensingDataset_Root + 'Widar\\' + '20181115' ]
-	# 	config.location = [1,2,3,4,5,6]
-	# 	config.orientation = [1,2,3,4,5,6]
-	# 	config.train_data, config.test_data, config.train_label, config.test_label = gestureDataLoader.getData(
-	# 			config, 'widar',ifscale = True
-	# 			)
-	# elif 'signfi' in victim_model_path:
-	# 	if 'lab_276' in victim_model_path:
-	# 		config.source = 'lab_276'
-	# 	if 'home_276' in victim_model_path:
-	# 		config.source = 'home_276'
-	# 	config.train_data, config.test_data, config.train_label, config.test_label = gestureDataLoader.getData(
-	# 		config, 'signfi', ifscale=True
-	# 	)
-	# else:
-	# 	raise ValueError('Root path is wrong')
 	victim_name = victim_model_path.split('model_')[1].split('_')[0]
 	victim_model = tf.keras.models.load_model( victim_model_path )
 	file_name_list = UAP_file_names.keys()

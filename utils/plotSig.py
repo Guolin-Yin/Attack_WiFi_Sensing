@@ -214,14 +214,4 @@ def EPSPerform():
                                                                                                         '30',
                                                               'range 0 - 40','range 0 - 50','range 0 - 500',
                                                               ],title = None)
-def zeroPerform():
-    a = loadmat(pjoin(result_dir,'ori_zscore_var.mat'),squeeze_me = True)
-    original = a[ 'original' ]
-    zscore = a[ 'zscore' ]
-    eps = np.arange( 0, 0.02, 0.002 )
-    ori = zip(eps,original)
-    z = zip(eps,zscore)
-    pltAttackPerform(info = [ori,z],label = ['original','zscore'],
-            title = None)
-if __name__ == '__main__':
-    print('')
+

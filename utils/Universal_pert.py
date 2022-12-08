@@ -89,24 +89,24 @@ def universal_perturbation_PGD(dataset,f,labels=None, delta=0.1, max_iter_uni = 
     :return: the universal perturbation.
     """
 
-    def generateAdvExsPGD( input_CSI, labels, pretrained_model, psr, n_iter: int = 0 ):
-        # print( f'The number of iterations are {n_iter}' )
-        loss_object = tf.keras.losses.CategoricalCrossentropy( )
-        input_CSI = tf.convert_to_tensor( input_CSI, dtype = tf.float32 )
-        labels = tf.convert_to_tensor( labels, dtype = tf.float32 )
-        gradient = np.zeros( input_CSI.shape )
-        for i in range( n_iter ):
-            model_input = input_CSI + gradient
-            with tf.GradientTape( persistent = True ) as tape:
-                tape.watch( model_input )
-                prediction = pretrained_model( model_input )
-                loss = loss_object( labels, prediction )
-            # gradient = gradient + (alpha/(i+1))*tf.sign(tape.gradient( loss, model_input ))
-            g = tape.gradient( loss, model_input )
-            g_norm = g / np.linalg.norm( g )
-            gradient = gradient + (
-                        np.sqrt( (psr / n_iter) / (np.mean( g_norm ** 2 ) / np.mean( input_CSI ** 2 )) ) * g_norm)
-        return np.asarray( gradient )
+    # def generateAdvExsPGD( input_CSI, labels, pretrained_model, psr, n_iter: int = 0 ):
+    #     # print( f'The number of iterations are {n_iter}' )
+    #     loss_object = tf.keras.losses.CategoricalCrossentropy( )
+    #     input_CSI = tf.convert_to_tensor( input_CSI, dtype = tf.float32 )
+    #     labels = tf.convert_to_tensor( labels, dtype = tf.float32 )
+    #     gradient = np.zeros( input_CSI.shape )
+    #     for i in range( n_iter ):
+    #         model_input = input_CSI + gradient
+    #         with tf.GradientTape( persistent = True ) as tape:
+    #             tape.watch( model_input )
+    #             prediction = pretrained_model( model_input )
+    #             loss = loss_object( labels, prediction )
+    #         # gradient = gradient + (alpha/(i+1))*tf.sign(tape.gradient( loss, model_input ))
+    #         g = tape.gradient( loss, model_input )
+    #         g_norm = g / np.linalg.norm( g )
+    #         gradient = gradient + (
+    #                     np.sqrt( (psr / n_iter) / (np.mean( g_norm ** 2 ) / np.mean( input_CSI ** 2 )) ) * g_norm)
+    #     return np.asarray( gradient )
     v = 0
     fooling_rate = 0.0
     num_images =  np.shape(dataset)[0] # The images should be stacked ALONG FIRST DIMENSION
@@ -124,8 +124,8 @@ def universal_perturbation_PGD(dataset,f,labels=None, delta=0.1, max_iter_uni = 
                 # print('>> k = ', k, ', pass #', itr)
                 # Compute adversarial perturbation
                 # dr,iter,_,_,_ = deepfool( cur_img + v, f, overshoot = overshoot, max_iter = max_iter_df )
-                dr = generateAdvExsPGD(input_CSI = cur_img + v, labels = cur_label,pretrained_model = f,psr =psr,
-                        n_iter = 5)
+                # dr = generateAdvExsPGD(input_CSI = cur_img + v, labels = cur_label,pretrained_model = f,psr =psr,
+                #         n_iter = 5)
 
 
                 # Make sure it converged...

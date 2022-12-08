@@ -283,7 +283,8 @@ def getData(config, dataset_name:str,ifzscore = False,ifscale = True):
     elif dataset_name =='signfi':
         # config.data_dir = '/Users/guolinyin/Library/Mobile Documents/com~apple~CloudDocs/PhD Research Files/Dataset/SignFi/Dataset'
         # config.data_dir = 'E:\SensingDataset\SignFi\Dataset'
-        config.data_dir = '/home/b218/GuolinDir/SensingDataset/SignFi/Dataset'
+        # config.data_dir = '/home/b218/GuolinDir/SensingDataset/SignFi/Dataset'
+        config.data_dir = config.sensingDataset_Root + '/SignFi/Dataset/'
         # config.data_dir = 'C:\\Users\\colinyin\\Desktop\\SignFi\\Dataset'
         # config.data_dir = '/Users/guolinyin/Google 云端硬盘/Colab Notebooks/SensingDataset/SignFi/Dataset'
         # config.source = 'lab_276'
