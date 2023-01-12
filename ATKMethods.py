@@ -35,7 +35,6 @@ if gpus:
     except RuntimeError as e:
         print( e )
 '''https://www.tensorflow.org/tutorials/generative/adversarial_fgsm'''
-
 config = Config.getconfig( )
 procOBJ = gestureDataLoader.preprocessing( )
 class myCallback(tf.keras.callbacks.Callback):
@@ -573,6 +572,10 @@ def atk_pgd(x,y,model,psr = 0.3,targeted = False,loss_object = tf.keras.losses.c
     for i in range(n_iter):
         grad = compute_gradient(model_fn=model, loss_fn=loss_object, x=x, y=y, targeted=targeted)
         delta = delta + l2_limiter(psr/n_iter,grad,x)
+        # if np.any(np.reshape(grad,(grad.shape[0],-1)).sum(axis = 1) == 0):
+        #     print((np.reshape(grad,(grad.shape[0],-1)).sum(axis = 1) == 0).sum())
+        # else:
+        #     print("all grad is not zero")
     delta = l2_limiter(psr,delta, x)
 
     # Add perturbation to original example to obtain adversarial example
@@ -613,7 +616,7 @@ def gen_adv_data(x,y,model,atk_type = 'fgsm',psr = None,targeted = False,loss_ob
         # 	adv_data = config.test_data + scaled_uni_per - scaled_uni_per.mean()
         else:
             raise ValueError('atk_type must be fgsm or pgd')
-    return x + delta
+    return delta
 
 def compute_psr(delta,data):
     delta = delta.reshape(delta.shape[0],-1)
@@ -817,7 +820,6 @@ def runAdvExsTestPSR(input_CSI,labels,pretrained_model,psr,ifpltcmd:bool =False,
     # print( f'The accuracy of universal adversarial samples for PSR = {psr:.5f} is {accuracy_2:.2f}' )
     # a = [accuracy,accuracy_2]
     return accuracy,perturb,advData
-def runAdvExsTestEps(input_CSI,labels,pretrained_model,eps,ifpltcmd:bool =False,t_label:int=None):
     '''
     labels_pred: should be one hot coded
     '''
@@ -850,9 +852,9 @@ def runAdvExsTestEps(input_CSI,labels,pretrained_model,eps,ifpltcmd:bool =False,
     print( f'Accuracy for eps = {eps:.3f} is {accuracy:.2f}' )
     return accuracy
 if __name__ == '__main__':
-    model_structure_list = ['alex1', 'alex2', 'alex3','cnn', 'vgg8', 'vgg10' ,'defult','vgg16','vgg19','resnet',
+    model_structure_list = ['alex1', 'alex2', 'alex3', 'cnn', 'vgg8', 'vgg10' ,'defult', 'vgg16', 'vgg19', 'resnet',
                             'resnet6']
-    model_depth_list = ['resnet','resnet6','resnet10','resnet12']
+    model_depth_list = ['resnet', 'resnet6', 'resnet10', 'resnet12']
     all_model = list(set([*model_structure_list,*model_depth_list]))
     # ==================================== Widar =======================================================================
     # config.data_dir = [config.sensingDataset_Root + 'Widar\\' + '20181109',

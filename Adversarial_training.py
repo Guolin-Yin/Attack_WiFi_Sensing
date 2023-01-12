@@ -127,12 +127,13 @@ def test_loop(config,psr,model,test_ds,method,**kwargs):
 	t_loss_val = []
 	val_acc_metric = tf.keras.metrics.CategoricalAccuracy()
 	loss_fn = tf.keras.losses.CategoricalCrossentropy(from_logits=True)
-	# print("Validation")
+	
+
 	for x_batch_val, y_batch_val in test_ds:
 		if method != None and method != 'deepfool':
 			x_batch_val, y_batch_val = get_adv_data(psr,model,x_batch_val, y_batch_val,method = method,
 													to_tf_dataset = False,
-													config=config,**kwargs)
+													config=config, **kwargs)
 		# elif method == 'UAP':
 		# 	x_batch_val, y_batch_val = get_adv_data(psr,model,x_batch_val, y_batch_val,method = method,
 		# 											to_tf_dataset = False,
@@ -154,7 +155,7 @@ def get_adv_data(psr,model,x_batch,y_batch,method = 'fgsm',config = None,to_tf_d
 	x_all = np.asarray(x_all)
 	y_all = np.asarray(y_all)
 	
-	x_adv = gen_adv_data(x = x_all,
+	delta = gen_adv_data(x = x_all,
 						y = y_all,
 						model = model,
 						atk_type = method,
@@ -162,6 +163,12 @@ def get_adv_data(psr,model,x_batch,y_batch,method = 'fgsm',config = None,to_tf_d
 						targeted = False,
 						**kwargs,
 						)
+	n = np.random.randint(0,3)
+	if 'ant_flag' in kwargs.keys() and kwargs['ant_flag']:
+		delta = np.expand_dims(np.mean(delta,axis=3),axis=3)
+		delta = np.tile(delta,[1,1,1,3])
+	# else:
+	x_adv = x_all + delta
 	if to_tf_dataset:
 		adv_dataset = tf.data.Dataset.from_tensor_slices((x_adv, y_all))
 		adv_dataset = adv_dataset.batch(config.batch_size)
