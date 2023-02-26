@@ -21,7 +21,7 @@ import copy
 for data_root, data_dirs, data_files in os.walk( os.getcwd( ) ):
     for rt in data_dirs:
         sys.path.append( os.path.join(data_root,rt) )
-import Config, SignalPreprocess, gestureDataLoader, plotSig, TOOLS
+from utils import Config, SignalPreprocess, gestureDataLoader, plotSig, TOOLS
 from scipy.io import savemat, loadmat
 import matplotlib.pyplot as plt
 from utils.DeepFool import deepfool

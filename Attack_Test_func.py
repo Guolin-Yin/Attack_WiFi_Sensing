@@ -16,14 +16,14 @@ from tqdm import tqdm
 for data_root, data_dirs, data_files in os.walk( os.getcwd( ) ):
     for rt in data_dirs:
         sys.path.append( os.path.join(data_root,rt) )
-import Config, SignalPreprocess, gestureDataLoader, DeepNet, plotSig, TOOLS
+import Config, SignalPreprocess, gestureDataLoader, plotSig, TOOLS
 from scipy.io import savemat, loadmat
 import matplotlib.pyplot as plt
 from DeepFool import deepfool
-from Experiments import scaleDeepfool
+# from utils.Experiments import scaleDeepfool
 from matplotlib.lines import Line2D
 from matplotlib.ticker import MaxNLocator
-from Experiments import heatmap
+# from Experiments import heatmap
 import os
 gpus = tf.config.experimental.list_physical_devices( 'GPU' )
 if gpus:
@@ -629,6 +629,17 @@ def plot_model_compare(psr_val = 0.0005,ifsave = False,vic_model = ['defult','al
 				idx = idx,
 				ifsave = ifsave)
 if __name__ == '__main__':
+	plot(
+		pdf_name = 'Cross_domain_atk_compare',
+		label_dict = {
+				'UAP_home_to_Lab': 'UAP ( $Home \Rightarrow Lab$ )',
+				'UAP_lab_to_Home': 'UAP ( $Lab  \Rightarrow Home$ )',
+				},
+		pltGuassian = 1,
+		UAP_home_to_Lab = 'UAP_signfi_atk_home_vic_lab_scale_1_more_psr.mat',
+		UAP_lab_to_Home = 'UAP_signfi_atk_lab_vic_home_scale_1_more_psr.mat',
+		# UAP_lab_to_lab = 'UAP_signfi_lab_scale_1.mat',
+		)
 	'''Unsupervised learning-based attack'''
 	# atk_receiver = 'Rx2'
 	# victim_receiver = 'Rx1'
@@ -648,39 +659,39 @@ if __name__ == '__main__':
 											UAP_form = UAP_form
 								)
 	# plot results
-	r = 4
-	plot(
-			pdf_name = None,
-			pltGuassian = 0,
-			Guassian_noise =  f'Widar_atk_Guassian_victim_Rx{r}.mat',
-			Rx1 = f'Unsupervised_labelForm_full_label_atkRx_Rx1_vicRx_Rx{r}.mat',
-			Rx2 = f'Unsupervised_labelForm_full_label_atkRx_Rx2_vicRx_Rx{r}.mat',
-			Rx3 = f'Unsupervised_labelForm_full_label_atkRx_Rx3_vicRx_Rx{r}.mat',
-			Rx4 = f'Unsupervised_labelForm_full_label_atkRx_Rx4_vicRx_Rx{r}.mat',
-			Rx5 = f'Unsupervised_labelForm_full_label_atkRx_Rx5_vicRx_Rx{r}.mat',
-			Rx6 = f'Unsupervised_labelForm_full_label_atkRx_Rx6_vicRx_Rx{r}.mat',
-		 )
+		r = 4
+		plot(
+				pdf_name = None,
+				pltGuassian = 0,
+				Guassian_noise =  f'Widar_atk_Guassian_victim_Rx{r}.mat',
+				Rx1 = f'Unsupervised_labelForm_full_label_atkRx_Rx1_vicRx_Rx{r}.mat',
+				Rx2 = f'Unsupervised_labelForm_full_label_atkRx_Rx2_vicRx_Rx{r}.mat',
+				Rx3 = f'Unsupervised_labelForm_full_label_atkRx_Rx3_vicRx_Rx{r}.mat',
+				Rx4 = f'Unsupervised_labelForm_full_label_atkRx_Rx4_vicRx_Rx{r}.mat',
+				Rx5 = f'Unsupervised_labelForm_full_label_atkRx_Rx5_vicRx_Rx{r}.mat',
+				Rx6 = f'Unsupervised_labelForm_full_label_atkRx_Rx6_vicRx_Rx{r}.mat',
+			)
 
-	plot(
-			pdf_name = None,
-			pltGuassian = 0,
-			Guassian_noise =  f'Widar_atk_Guassian_victim_Rx{r}.mat',
-			Rx1=f'Unsupervised_labelForm_pseudo_label_atkRx_Rx1_vicRx_Rx{r}.mat',
-			Rx2=f'Unsupervised_labelForm_pseudo_label_atkRx_Rx2_vicRx_Rx{r}.mat',
-			Rx3=f'Unsupervised_labelForm_pseudo_label_atkRx_Rx3_vicRx_Rx{r}.mat',
-			Rx4=f'Unsupervised_labelForm_pseudo_label_atkRx_Rx4_vicRx_Rx{r}.mat',
-			Rx5=f'Unsupervised_labelForm_pseudo_label_atkRx_Rx5_vicRx_Rx{r}.mat',
-			Rx6 = f'Unsupervised_labelForm_pseudo_label_atkRx_Rx6_vicRx_Rx{r}.mat',
-		 )
-	plot(
-			pdf_name = 'Oringinal_label_vs_pseudo_label.pdf',
-			pltGuassian = 0,
-			Guassian_noise =  f'Widar_atk_Guassian_victim_Rx{r}.mat',
-			pseudo_label=f'Unsupervised_labelForm_pseudo_label_atkRx_Rx5_vicRx_Rx{r}.mat',
-			Oringinal_label=f'Unsupervised_labelForm_full_label_atkRx_Rx5_vicRx_Rx{r}.mat',
+		plot(
+				pdf_name = None,
+				pltGuassian = 0,
+				Guassian_noise =  f'Widar_atk_Guassian_victim_Rx{r}.mat',
+				Rx1=f'Unsupervised_labelForm_pseudo_label_atkRx_Rx1_vicRx_Rx{r}.mat',
+				Rx2=f'Unsupervised_labelForm_pseudo_label_atkRx_Rx2_vicRx_Rx{r}.mat',
+				Rx3=f'Unsupervised_labelForm_pseudo_label_atkRx_Rx3_vicRx_Rx{r}.mat',
+				Rx4=f'Unsupervised_labelForm_pseudo_label_atkRx_Rx4_vicRx_Rx{r}.mat',
+				Rx5=f'Unsupervised_labelForm_pseudo_label_atkRx_Rx5_vicRx_Rx{r}.mat',
+				Rx6 = f'Unsupervised_labelForm_pseudo_label_atkRx_Rx6_vicRx_Rx{r}.mat',
+			)
+		plot(
+				pdf_name = 'Oringinal_label_vs_pseudo_label.pdf',
+				pltGuassian = 0,
+				Guassian_noise =  f'Widar_atk_Guassian_victim_Rx{r}.mat',
+				pseudo_label=f'Unsupervised_labelForm_pseudo_label_atkRx_Rx5_vicRx_Rx{r}.mat',
+				Oringinal_label=f'Unsupervised_labelForm_full_label_atkRx_Rx5_vicRx_Rx{r}.mat',
 
 
-		 )
+			)
 	# a = loadmat(
 	# 		'resultsMat/Pub_results/cross_model_test/eleven_model_test/signfi_vic_lab_276_atk_guassian_noise.mat',
 	# 		squeeze_me = 1

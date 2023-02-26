@@ -2,7 +2,7 @@
 from matplotlib.lines import Line2D
 from matplotlib.ticker import MaxNLocator
 import matplotlib.pyplot as plt
-from utils.TOOLS import comp_atk_success_rate
+# from utils.TOOLS import comp_atk_success_rate
 from collections import OrderedDict
 from matplotlib.colors import LightSource
 import os
@@ -10,6 +10,8 @@ from scipy.io import loadmat
 import numpy as np
 import tensorflow as tf
 from ATKMethods import compute_gradient, l2_limiter, compute_psr
+from Attack_Test_func import plot
+
 def draw_loss(model, X,Y, psr,):
     assert X.shape[0] == 1, 'X should be a single sample'
     def psr_to_eps(psr,pert,data):
@@ -300,11 +302,11 @@ def plot(pdf_name=None,pltGuassian=0,marker_dict = None,label_dict = None,linest
             label = key
         else:
             label = label_dict[key]
-        ax.plot(psr[0:7],
-                acc[0:7],
+        ax.plot(psr,
+                acc,
                 label=label,
                 marker = marker_dict[key],
-                linestyle = linestyle_dict[key],
+                # linestyle = linestyle_dict[key],
                 fillstyle = Line2D.fillStyles[-1])
         if 'Guassian_noise' in result and pltGuassian:
             ax.plot(
@@ -324,11 +326,12 @@ def plot(pdf_name=None,pltGuassian=0,marker_dict = None,label_dict = None,linest
     ax.legend( fontsize=10, ncol=2,loc = 'best',
             # bbox_to_anchor=(1, 0.1)
             )
-    plt.show()
+    
     if pdf_name is not None:
         out = os.path.join('RESULTS_FIGS',pdf_name)
         # out = os.path.join('E:\\',pdf_name)
         plt.savefig( out + '.pdf',bbox_inches='tight',  )
+    plt.show()
 def plot_model_compare(psr_val = 0.0005,ifsave = False,vic_model = ['defult','alex1','alex2','alex3','cnn','vgg8','vgg10','vgg19',],**mat_names):
     for key in mat_names:
         acc_all = loadmat('resultsMat/Pub_results/cross_model_test/eleven_model_test/'+mat_names[key],squeeze_me=1)
@@ -597,23 +600,23 @@ if __name__ == '__main__':
     # plt.savefig('time_cost.pdf',bbox_inches='tight')
     #%%
     '''Plots the FGSM vs DeepFool vs PGD vs Gaussian noise'''
-    plot(
-            pdf_name = 'compare_deepfool_PGD_FGSM',
-            label_dict = {
-                    'Deepfool': 'Deepfool',
-                    'FGSM': 'FGSM',
-                    'PGD_1': 'PGD (1 iteration)',
-                    'PGD_2': 'PGD (2 iterations)',
-                    'PGD_3': 'PGD (3 iterations)',
-                    'Guassian_Noise': 'Guassian Noise'
-                    },
-            FGSM = 'fgsm_signfi_lab_PSR0to0.0005.mat',
-            Deepfool = 'deepfool_signfi_lab_PSR0to0.0005.mat',
-            PGD_1 = 'pgd_1_signfi_lab_PSR0to0.0005.mat',
-            PGD_2 = 'pgd_2_signfi_lab_PSR0to0.0005.mat',
-            PGD_3 = 'pgd_3_signfi_lab_PSR0to0.0005.mat',
-            Guassian_Noise = 'gaussian_signfi.mat'
-            )
+    # plot(
+    #         pdf_name = 'compare_deepfool_PGD_FGSM',
+    #         label_dict = {
+    #                 'Deepfool': 'Deepfool',
+    #                 'FGSM': 'FGSM',
+    #                 'PGD_1': 'PGD (1 iteration)',
+    #                 'PGD_2': 'PGD (2 iterations)',
+    #                 'PGD_3': 'PGD (3 iterations)',
+    #                 'Guassian_Noise': 'Guassian Noise'
+    #                 },
+    #         FGSM = 'fgsm_signfi_lab_PSR0to0.0005.mat',
+    #         Deepfool = 'deepfool_signfi_lab_PSR0to0.0005.mat',
+    #         PGD_1 = 'pgd_1_signfi_lab_PSR0to0.0005.mat',
+    #         PGD_2 = 'pgd_2_signfi_lab_PSR0to0.0005.mat',
+    #         PGD_3 = 'pgd_3_signfi_lab_PSR0to0.0005.mat',
+    #         Guassian_Noise = 'gaussian_signfi.mat'
+    #         )
     '''Plot compare of deep fool and UAP'''
     # plot(
     # 		# pdf_name = None,

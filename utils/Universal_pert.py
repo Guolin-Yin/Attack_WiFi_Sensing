@@ -1,8 +1,8 @@
 import numpy as np
-from utils.DeepFool import deepfool
+from DeepFool import deepfool
 from tqdm import tqdm
 import tensorflow as tf
-from utils.TOOLS import *
+from TOOLS import *
 # from DeepNet import generateAdvExsPGD
 def proj_lp(v, xi, p, data = None):
 

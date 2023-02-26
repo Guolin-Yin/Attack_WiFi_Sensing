@@ -3,8 +3,8 @@ import numpy as np
 import h5py
 from scipy.io import savemat, loadmat
 import tensorflow as tf
-from utils.Universal_pert import *
-import utils.gestureDataLoader as gestureDataLoader
+from Universal_pert import *
+import gestureDataLoader as gestureDataLoader
 import copy
 procOBJ = gestureDataLoader.preprocessing( )
 def comp_atk_success_rate(acc_array):
