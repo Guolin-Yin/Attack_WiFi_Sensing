@@ -3,8 +3,8 @@ import numpy as np
 import h5py
 from scipy.io import savemat, loadmat
 import tensorflow as tf
-from Universal_pert import *
-import gestureDataLoader as gestureDataLoader
+# from Universal_pert import *
+import utils.gestureDataLoader as gestureDataLoader
 import copy
 procOBJ = gestureDataLoader.preprocessing( )
 def comp_atk_success_rate(acc_array):
@@ -128,7 +128,7 @@ def plotting_bar_chart(acc_all,psr_idx = 5):
 
 
 
-def l2_limiter(psr,perturbation,data):
+def psr_limiter(psr,perturbation,data):
 	per_norm = perturbation / np.linalg.norm( perturbation )
 	delta = (np.sqrt( psr / np.mean( np.mean( per_norm ** 2 ) / np.mean( data ** 2 ) ) )) * (per_norm)
 	return delta

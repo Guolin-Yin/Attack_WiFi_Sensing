@@ -133,7 +133,7 @@ def universal_perturbation_PGD(dataset,f,labels=None, delta=0.1, max_iter_uni = 
                 v = v + dr
                 # Project on l_p ball
                 # v = proj_lp(v, xi, p,data = cur_img)
-                v = l2_limiter( psr = psr, perturbation = v, data = cur_img )
+                v = psr_limiter( psr = psr, perturbation = v, data = cur_img )
         itr = itr + 1
         # Perturb the dataset with computed perturbation
         dataset_perturbed = dataset + v

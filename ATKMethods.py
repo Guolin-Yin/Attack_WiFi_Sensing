@@ -14,14 +14,16 @@ from tqdm import tqdm
 import numpy as np
 import re
 import h5py
-from utils.Experiments import *
+from utils.arc.Experiments import *
 import sys
 import os
 import copy
+from core_fn.utils import *
+from utils.arc import SignalPreprocess, plotSig
 for data_root, data_dirs, data_files in os.walk( os.getcwd( ) ):
     for rt in data_dirs:
         sys.path.append( os.path.join(data_root,rt) )
-from utils import Config, SignalPreprocess, gestureDataLoader, plotSig, TOOLS
+from utils import Config, gestureDataLoader, TOOLS
 from scipy.io import savemat, loadmat
 import matplotlib.pyplot as plt
 from utils.DeepFool import deepfool
@@ -477,24 +479,24 @@ class AlexNetTF:
         out = tf.keras.layers.ReLU( )( out )
 
         return out
-def l2_limiter(psr,perturbation,data):
-    """scale the perturbation accroding the psr provided
+# def psr_limiter(psr,perturbation,data):
+#     """scale the perturbation accroding the psr provided
 
-    Args:
-        psr (number): psr
-        perturbation (nparray): perturbation
-        data (_type_): _description_
+#     Args:
+#         psr (number): psr
+#         perturbation (nparray): perturbation
+#         data (_type_): _description_
 
-    Returns:
-        _type_: _description_
-    """
-    perturbation = np.array(perturbation)
-    data = np.array(data)
-    per_norm = perturbation / np.linalg.norm( perturbation.reshape(perturbation.shape[0],-1) ,axis = 1 ).reshape(-1,1,1,1)
-    per_norm_factor = per_norm.reshape( per_norm.shape[0],-1 )
-    data = data.reshape( data.shape[0],-1 )
-    delta = (np.sqrt( psr / ( np.mean( per_norm_factor ** 2,axis = 1 ) / np.mean( data ** 2,axis = 1 ) ) )).reshape(-1,1,1,1) * (per_norm)
-    return delta
+#     Returns:
+#         _type_: _description_
+#     """
+#     perturbation = np.array(perturbation)
+#     data = np.array(data)
+#     per_norm = perturbation / np.linalg.norm( perturbation.reshape(perturbation.shape[0],-1) ,axis = 1 ).reshape(-1,1,1,1)
+#     per_norm_factor = per_norm.reshape( per_norm.shape[0],-1 )
+#     data = data.reshape( data.shape[0],-1 )
+#     delta = (np.sqrt( psr / ( np.mean( per_norm_factor ** 2,axis = 1 ) / np.mean( data ** 2,axis = 1 ) ) )).reshape(-1,1,1,1) * (per_norm)
+#     return delta
 @tf.function
 def compute_gradient(model_fn, loss_fn, x, y, targeted = None):
     """
@@ -543,7 +545,7 @@ def atk_fgsm(x,y,model,psr = 0.3,targeted = False,loss_object = tf.keras.losses.
     # Take sign of gradient
     delta = tf.sign(grad)
 
-    delta = l2_limiter(psr,delta, x)
+    delta = psr_limiter(psr,delta, x)
 
     # Add perturbation to original example to obtain adversarial example
     # adv_x = x + delta
@@ -571,12 +573,12 @@ def atk_pgd(x,y,model,psr = 0.3,targeted = False,loss_object = tf.keras.losses.c
     assert n_iter is not None, "n_iter is None"
     for i in range(n_iter):
         grad = compute_gradient(model_fn=model, loss_fn=loss_object, x=x, y=y, targeted=targeted)
-        delta = delta + l2_limiter(psr/n_iter,grad,x)
+        delta = delta + psr_limiter(psr/n_iter,grad,x)
         # if np.any(np.reshape(grad,(grad.shape[0],-1)).sum(axis = 1) == 0):
         #     print((np.reshape(grad,(grad.shape[0],-1)).sum(axis = 1) == 0).sum())
         # else:
         #     print("all grad is not zero")
-    delta = l2_limiter(psr,delta, x)
+    delta = psr_limiter(psr,delta, x)
 
     # Add perturbation to original example to obtain adversarial example
     # adv_x = x + delta
@@ -584,7 +586,7 @@ def atk_pgd(x,y,model,psr = 0.3,targeted = False,loss_object = tf.keras.losses.c
 def atk_noise(shape,psr,x):
     delta = np.random.normal(0,1,shape)
     
-    return l2_limiter(psr,delta,x)
+    return psr_limiter(psr,delta,x)
 def gen_adv_data(x,y,model,atk_type = 'fgsm',psr = None,targeted = False,loss_object = tf.keras.losses.categorical_crossentropy,**kwargs):
     assert isinstance(psr,float), "psr should with length 1"
     if psr == 0.0:
@@ -624,8 +626,6 @@ def compute_psr(delta,data):
     psr = np.mean( delta ** 2,axis = 1 ) / np.mean( data**2,axis = 1 )
     return psr
 def generatePerturbData(psr,data,current_label,pretrained_model,t_label,method:str = 'fgsm',**kwargs):
-    
-
     idx = None
     if psr == 0.0:
         delta = np.zeros( data.shape )
@@ -649,7 +649,7 @@ def generatePerturbData(psr,data,current_label,pretrained_model,t_label,method:s
             # remove the corresponding label
             label_re = current_label[idx]
             current_label = np.delete(current_label,idx,axis=0)
-        delta = l2_limiter(psr = psr,perturbation = perturbation,data = data)
+        delta = psr_limiter(psr = psr,perturbation = perturbation,data = data)
         # delta, data = np.squeeze( delta ), np.squeeze( data )
     adv_data = data + delta
 
@@ -709,7 +709,7 @@ def generateAdvExsPGD(input_CSI, labels, pretrained_model,alpha = 1e4,n_iter:int
             loss = loss_object( labels, prediction )
         # gradient = gradient + (alpha/(i+1))*tf.sign(tape.gradient( loss, model_input ))
         g_buf = tape.gradient( loss, model_input )
-        g = l2_limiter(psr/n_iter,g_buf,input_CSI)
+        g = psr_limiter(psr/n_iter,g_buf,input_CSI)
         gradient = gradient +  g 
     return np.asarray(gradient)
 def runTrain(config, dataset_name):

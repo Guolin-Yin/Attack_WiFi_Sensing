@@ -9,7 +9,7 @@ import os
 from scipy.io import loadmat
 import numpy as np
 import tensorflow as tf
-from ATKMethods import compute_gradient, l2_limiter, compute_psr
+from ATKMethods import compute_gradient, psr_limiter, compute_psr
 from Attack_Test_func import plot
 
 def draw_loss(model, X,Y, psr,):
@@ -240,7 +240,7 @@ def heatmap(acc_dict,title,vic_model = ['defult', 'alex1', 'alex2', 'alex3', 'vg
     if ifsave:
         out = os.path.join('RESULTS_FIGS',title)
         plt.savefig( out + '.pdf',bbox_inches='tight',  )
-def plot(pdf_name=None,pltGuassian=0,marker_dict = None,label_dict = None,linestyle_dict = None,to_db = False,**mat_names):
+def plot(pdf_name=None,pltGuassian=0,marker_dict = None,label_dict = None,linestyle_dict = None,to_db = False,legend_loc = None,**mat_names):
     if marker_dict == None:
         marker_dict = {
             'Deepfool': 'o',
@@ -289,7 +289,7 @@ def plot(pdf_name=None,pltGuassian=0,marker_dict = None,label_dict = None,linest
     }
     result_dir = 'resultsMat/Pub_results/'
     keys = list( mat_names.keys( ) )
-    ax = plt.figure( figsize=(8, 5) ).gca( )
+    ax = plt.figure( figsize=(8, 4) ).gca( )
     ax.xaxis.set_major_locator( MaxNLocator( integer=True ) )
     for key in keys:
         path = os.path.join(result_dir,mat_names[key])
@@ -302,8 +302,8 @@ def plot(pdf_name=None,pltGuassian=0,marker_dict = None,label_dict = None,linest
             label = key
         else:
             label = label_dict[key]
-        ax.plot(psr,
-                acc,
+        ax.plot(psr[0:7],
+                acc[0:7],
                 label=label,
                 marker = marker_dict[key],
                 # linestyle = linestyle_dict[key],
@@ -311,22 +311,25 @@ def plot(pdf_name=None,pltGuassian=0,marker_dict = None,label_dict = None,linest
         if 'Guassian_noise' in result and pltGuassian:
             ax.plot(
                     psr,(result[ 'Guassian_noise' ][0] - result[ 'Guassian_noise' ])/result[ 'Guassian_noise' ][0],
-                    label = 'Guassian noise '+ '(' +key.split('_')[-1] + ')',
+                    label = 'Gaussian noise '+ '(' +key.split('_')[-1] + ')',
                     marker = marker_dict[ key ],
                     fillstyle = Line2D.fillStyles[ -1 ]
                     )
     ax.ticklabel_format( style='sci', scilimits=(0,0), axis='x' )
     fsize = 14
+
+    # plt.xticks(np.round(psr, 5))
     plt.xticks( fontsize=fsize )
     plt.yticks( fontsize=fsize )
     plt.ylim(-0.03,1)
     plt.grid(True)
     ax.set_xlabel( 'PSR', fontsize=fsize )
     ax.set_ylabel( 'Attack Success Rate (ASR)', fontsize=fsize )
-    ax.legend( fontsize=10, ncol=2,loc = 'best',
-            # bbox_to_anchor=(1, 0.1)
-            )
-    
+    # legend_loc = legend_loc if 'legend_loc' != None else 'best'
+    if legend_loc is not None:
+        plt.legend(fontsize=10, ncol=3,loc = 'best', bbox_to_anchor=(legend_loc[0], legend_loc[1]), labelspacing=.1,handletextpad=0.1)
+    else:
+        plt.legend(fontsize=10, ncol=3,loc = 'best', labelspacing=.1,handletextpad=0.1)
     if pdf_name is not None:
         out = os.path.join('RESULTS_FIGS',pdf_name)
         # out = os.path.join('E:\\',pdf_name)
@@ -391,7 +394,7 @@ def plotGuassian_noiseForModel(fname,**model_names):
             'signfi_vic_alex3_atk_defult': '$C_{D}(Home) \Rightarrow C_{D_2}(Lab)$',
             'signfi_vic_vgg19_atk_defult': '$C_{D}(Home) \Rightarrow VGG19(Lab)$',
             }
-    ax = plt.figure( figsize=(8, 5) ).gca( )
+    ax = plt.figure( figsize=(8, 4) ).gca( )
     ax.xaxis.set_major_locator( MaxNLocator( integer=True ) )
     psr = model_names['psr']
     model_names.pop('psr')
@@ -416,7 +419,7 @@ def plotGuassian_noiseForModel(fname,**model_names):
                 marker = marker_dict[name],linestyle=line[i],
                 fillstyle = Line2D.fillStyles[-1])
     ax.ticklabel_format( style='sci', scilimits=(0, 0), axis='x' )
-    plt.legend(fontsize=10, ncol=2,bbox_to_anchor=(0.376, 0.2),labelspacing=.1,handletextpad=0.1)
+    plt.legend(fontsize=9, ncol=2,bbox_to_anchor=(0.4, 0.2),labelspacing=.1,handletextpad=0.1)
     plt.grid(True)
     fsize = 14
     plt.xticks( fontsize=fsize )
@@ -427,20 +430,22 @@ def plotGuassian_noiseForModel(fname,**model_names):
     ax.set_ylabel( 'Attack Success Rate (ASR)', fontsize=fsize )
     out = os.path.join( 'RESULTS_FIGS', fname )
     plt.savefig( out + '.pdf', bbox_inches = 'tight', )
-def plot_adv_results(config,plot_info,save_name = None,matric: str = None,to_dB = False, **kwargs):
+def plot_adv_results(config,plot_info,save_name = None,matric = None,to_dB = False, **kwargs):
     #config path
 
     if not os.path.exists(config.results_dir['adv_pdf']):
         os.makedirs(config.results_dir['adv_pdf'])
     # plot
     fsize = 14
-    marker_dict = kwargs['marker_dic']
-    color_dict = kwargs['color_dic']
+    # marker_dict = kwargs['marker_dic']
+    # color_dict = kwargs['color_dic']
+    
+    alpha = kwargs['alpha'] if 'alpha' in kwargs.keys() else 1
     fig = plt.figure( figsize=(8, 6) )
     # fig.xaxis.set_major_locator( MaxNLocator( integer=True ) )
     if isinstance(plot_info,dict):
         plot_info = [plot_info] 
-        
+    
     for idx, result_dic in enumerate(plot_info):
         psr = 10*np.log10(result_dic['psr']) if to_dB else result_dic['psr']
         result_dic.pop('psr',None)
@@ -449,52 +454,59 @@ def plot_adv_results(config,plot_info,save_name = None,matric: str = None,to_dB 
         result_dic.pop( '__globals__', None )
         
         
-        ax = fig.add_subplot(1,len(plot_info),idx + 1)
-        for label in sorted(result_dic):
+        # ax = fig.add_subplot(1,len(plot_info),idx + 1)
+        # init a fig and ax
+        ax = plt.figure( figsize=(8, 3) ).gca( )
+        for label in result_dic:
             acc = result_dic[label]
             if matric == 'acc':
                 mtc = acc
             elif matric == 'asr':
                 mtc = (acc[0] - acc)/acc[0]
-            if 'legend' in kwargs.keys():
-                legend = kwargs['legend'][label]
-            else:
-                legend = label
+            
+            legend = kwargs['legend'][label] if 'legend' in kwargs.keys() else label
+            linstyle = kwargs['linestyle'][label] if 'linestyle' in kwargs.keys() else '-'
+            color = kwargs['color_dic'][label] if 'color_dic' in kwargs.keys() else None
+            marker = kwargs['marker_dic'][label] if 'marker_dic' in kwargs.keys() else None
+            # else:
+            #     legend = label
             ax.plot(psr,
                 mtc,
                 label=legend,
-                marker = marker_dict[label],
-                color = color_dict[label],
-                # linestyle = linestyle_dict[key],
+                marker = marker,
+                color = color,
+                linestyle = linstyle,
+                alpha = alpha,
                 fillstyle = Line2D.fillStyles[-1]
                 )
             # ax.text( 0.001,0.0001,'Iteration: {}'.format(idx + 1), fontsize=12)
-            if kwargs['title']:
+            if 'title' in kwargs.keys():
                 ax.set_title(kwargs['title'][idx])
-            if isinstance(plot_info,list):
+            if isinstance(plot_info,list) and len(plot_info) > 1:
                 plot_idx = ['a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v','w','x','y','z']
                 ax.set_xlabel( f'PSR \n ({plot_idx[idx]})', fontsize=fsize )
             else:
                 ax.set_xlabel( 'PSR', fontsize=fsize )
         
         ax.ticklabel_format( style='sci', scilimits=(0,0), axis='x' )
+
         plt.xticks( fontsize=fsize )
+        ax.ticklabel_format( style='sci', scilimits=(0,0), axis='y' )
         plt.yticks( fontsize=fsize )
-        plt.ylim(-0.03,1.05)
+        if 'ylim' in kwargs.keys():
+            bottom,top = kwargs['ylim']
+            plt.ylim(bottom,top)
+        else:
+            plt.ylim(-0.03,1.05)
         plt.grid(True)
-        
-        # ax.set_ylabel( 'ASR' if matric == 'asr' else 'Accuracy', fontsize=fsize )
-        
-        fig.supylabel('ASR' if matric == 'asr' else 'Accuracy', fontsize=fsize )
+        ax.set_ylabel( 'ASR' if matric == 'asr' else 'Accuracy', fontsize=fsize )
+        # fig.supylabel('ASR' if matric == 'asr' else 'Accuracy', fontsize=fsize )
         # fig.supxlabel('Iteration')
-        plt.legend(fontsize=10, ncol=1,loc = 'best',
-                #    bbox_to_anchor=(0.376, 0.2),
+        plt.legend(fontsize=13, ncol=1,loc = 'best', 
                 labelspacing=.1,handletextpad=0.1)
     if save_name:
         save_path = os.path.join('RESULTS_FIGS',save_name)
-        # save_path = os.path.join('C:\Users/29073\Dropbox\应用\Overleaf',save_name)
-        
-        plt.savefig(save_path+'.pdf',bbox_inches = 'tight', )
+        plt.savefig(save_path +'.pdf',bbox_inches = 'tight', )
     plt.show()
 if __name__ == '__main__':
     

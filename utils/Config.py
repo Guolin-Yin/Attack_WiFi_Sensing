@@ -17,7 +17,7 @@ class getconfig:
         # self.attacker_model_Root = 'SavedModel\\PSR'
         self.results_dir = 'utils/resultsMat'
         # self.sensingDataset_Root = 'home\\b218\\GuolinDir\\SensingDataset\\' 
-        self.sensingDataset_Root = "/media/b218/HOME/Code_ds/SensingDataset/"
+        self.sensingDataset_Root = "/home/b218/Disk_b218/Code_ds/SensingDataset/"
         self.adv_robust_model_path = 'SavedModel/Adversarial_robust_model'
         self.pretrained_model_path = None
         self.test_data = None

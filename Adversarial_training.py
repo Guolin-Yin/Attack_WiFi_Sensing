@@ -45,7 +45,7 @@ def train_epoch(config,
 	for step, (x_batch_train, y_batch_train) in enumerate(train_dataset):#,desc='Training',total=len(train_dataset):
 		# print(f'\rTraining step {step}',end='')
 		if method:
-			x_batch_train_adv, y_batch_train_adv = get_adv_data(psr,model,x_batch_train, y_batch_train,method = method,config = config,to_tf_dataset = False,**kwargs)
+			x_batch_train_adv, y_batch_train_adv = get_adv_data(psr,model,x_batch_train, y_batch_train,method = method,batch_size=config.batch_size,to_tf_dataset = False,**kwargs)
 			x_batch_train, y_batch_train = np.concatenate((x_batch_train,x_batch_train_adv),axis = 0),np.concatenate((y_batch_train,y_batch_train_adv),axis = 0)
 		loss_value = train_step(x_batch_train, y_batch_train,model,optimizer,train_acc_metric,loss_fn)
 		t_loss.append(loss_value)
@@ -63,7 +63,7 @@ def train_epoch(config,
 		if method:
 			x_batch_val, y_batch_val = get_adv_data(psr,model,x_batch_val, y_batch_val,method = method,
 													to_tf_dataset = False,
-													config=config,**kwargs)
+													batch_size=config.batch_size,**kwargs)
 		t_loss_val.append(test_step(x_batch_val, y_batch_val,model,val_acc_metric,loss_fn))
 
 	val_acc = val_acc_metric.result()
@@ -142,7 +142,7 @@ def test_loop(config,psr,model,test_ds,method,**kwargs):
 		t_loss_val.append(test_step(x_batch_val, y_batch_val,model,val_acc_metric,loss_fn))
 	val_acc = val_acc_metric.result()
 	return val_acc
-def get_adv_data(psr,model,x_batch,y_batch,method = 'fgsm',config = None,to_tf_dataset = True,**kwargs):
+def get_adv_data(psr,model,x_batch,y_batch,method = 'fgsm',batch_size = None,to_tf_dataset = True,**kwargs):
 	# generate testing adversarial data
 	delta = []
 	x_all = []
@@ -163,7 +163,7 @@ def get_adv_data(psr,model,x_batch,y_batch,method = 'fgsm',config = None,to_tf_d
 						targeted = False,
 						**kwargs,
 						)
-	n = np.random.randint(0,3)
+
 	if 'ant_flag' in kwargs.keys() and kwargs['ant_flag']:
 		delta = np.expand_dims(np.mean(delta,axis=3),axis=3)
 		delta = np.tile(delta,[1,1,1,3])
@@ -171,7 +171,7 @@ def get_adv_data(psr,model,x_batch,y_batch,method = 'fgsm',config = None,to_tf_d
 	x_adv = x_all + delta
 	if to_tf_dataset:
 		adv_dataset = tf.data.Dataset.from_tensor_slices((x_adv, y_all))
-		adv_dataset = adv_dataset.batch(config.batch_size)
+		adv_dataset = adv_dataset.batch(batch_size)
 		return adv_dataset
 	else:
 		return x_adv,y_all

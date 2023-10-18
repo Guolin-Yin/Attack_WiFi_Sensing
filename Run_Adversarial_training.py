@@ -74,12 +74,10 @@ for seed in [2, 3, 4, 5, 6, 7, 8, 9, 10, 42]:
 print('UAP testing')
 config = Config.getconfig( )
 config.source = 'home_276'
-train_data, test_data, train_label, test_label = gestureDataLoader.getData(
-        config, 'signfi'
-        )
+train_data, test_data, train_label, test_label = gestureDataLoader.getData( config, 'signfi' )
 X_train, X_test, y_train, y_test = train_test_split( train_data, train_label, test_size=0.1, random_state=42)
 UAP_results_folder = 'resultsMat/Adversarial_training_results'
-UAP_results_fileName = 'UAP_Cross_domain_results_normal_surro_train_lab_to_home.mat'
+UAP_results_fileName = 'UAP_Cross_domain_results_normal_surro_train.mat'
 UAP_perturbation_folder = 'perturbation/UAP_AT_model'
 Victim_model_folder = 'SavedModel/Adversarial_robust_model/'
 path_to_results = os.path.join( UAP_results_folder, UAP_results_fileName )
@@ -91,15 +89,20 @@ for v_model in os.listdir(Victim_model_folder):
     if 'home' in v_model and 'pgd' in v_model and 'resnet' not in v_model:
             v_psr = v_model.split('_psr_')[1].split('_')[0]
             v_iter = v_model.split('_niter_')[1].split('_')[0]
-            name = f'Surrogate_Normal_lab_atk_home_PSR_{v_psr}_iter_{v_iter}'
-            if name in result_dic.keys():
-                continue
-            print('Testing the performance of UAP: ',name)
+            # name = f'Surrogate_Normal_lab_atk_home_PSR_{v_psr}_iter_{v_iter}'
+            # if name in result_dic.keys():
+            #     continue
+            # print('Testing the performance of UAP: ',name)
+            if v_psr == '0.001' and v_iter == '4':
+                print('Testing the performance of model: ',v_model)
+            net = AlexNetTF( config )
+            model = net.buildModel( choice = 'defult')
+            model.load_weights(Victim_model_folder + v_model)
             
-            # net = AlexNetTF( config )
-            # model = net.buildModel( choice = 'defult')
-            # model.load_weights(Victim_model_folder + v_model)
-            # print(f'The victim model is {v_model}')
+            a = np.random.normal(0, 1, input_CSI.shape)
+            pertEx = scaleDeepfool( psr = psr, test_data = test_data, perturbation = a[i:i+1] )
+            advEx = test_data + pertEx - pertEx.mean( )
+          # print(f'The victim model is {v_model}')
             # acc = UAPTest(
             #         X = X_test,
             #         y = y_test,
@@ -111,6 +114,7 @@ for v_model in os.listdir(Victim_model_folder):
             #     name:acc
             # } )
             # savemat(path_to_results,result_dic)
+# import loadmat
 
 #%% Adversarial training the surrogate model
 config = Config.getconfig( )
